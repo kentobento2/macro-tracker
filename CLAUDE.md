@@ -7,7 +7,7 @@ Expo (TypeScript, Expo Router) app shipped primarily as a mobile-first PWA on we
 ## Project rules
 
 ### Macro math lives in its own tested module
-- All nutrition math lives in pure modules under `src/lib/`: `macros.ts` (totals, scaling), `units.ts` (g/oz/servings, lb/ft), `targets.ts` (BMR/TDEE/macro targets), `entries.ts` (entry totals, weekly averages), `foods.ts` (normalizing USDA / Open Food Facts), `settings-form.ts` (form parsing and unit conversion), `dates.ts` / `calendar.ts` (date keys, Mon–Sun weeks, month grids).
+- All nutrition math lives in pure modules under `src/lib/`: `macros.ts` (totals, scaling), `units.ts` (g/oz/servings, lb/ft), `targets.ts` (BMR/TDEE/macro targets), `entries.ts` (entry totals, weekly averages), `foods.ts` (normalizing USDA / Open Food Facts), `settings-form.ts` (form parsing and unit conversion), `dates.ts` / `calendar.ts` (date keys, Mon–Sun weeks, month grids), `bodyweight.ts` (weekly/rolling averages, week-over-week, ranges, weight queue; weights are canonical kg).
 - These modules stay pure: no React, no Supabase, no I/O, no `Date.now()`. Inputs in, numbers out.
 - Screens and components call into them; they never inline macro arithmetic. The Edge Function only proxies and trims data — no math there.
 - Macro math is done in code, never estimated by AI. Missing calories are derived from macros (4/4/9) and flagged in the UI.
@@ -29,9 +29,9 @@ Expo (TypeScript, Expo Router) app shipped primarily as a mobile-first PWA on we
 - Must work on iPhone Safari and Android Chrome, including installed to the home screen. Check changes at phone width (`npm run web`, devtools device mode).
 
 ## Layout
-- `src/app/` — Expo Router routes only. `(tabs)/` = Log (any day via `?date=`: arrows, Today chip, tap the date for a month calendar with dots on logged days; plus that week's Mon–Sun average) and Settings; `add.tsx` = add/edit food (modal); `sign-in.tsx`; `+html.tsx` = web HTML shell with PWA meta tags.
+- `src/app/` — Expo Router routes only. `(tabs)/` = Log (any day via `?date=`: arrows, Today chip, tap the date for a month calendar with dots on logged days; plus that week's Mon–Sun average), Weight (weigh-ins, weekly average + change, history by week) and Settings; `add.tsx` = add/edit food (modal); `sign-in.tsx`; `+html.tsx` = web HTML shell with PWA meta tags.
 - `src/lib/` — pure logic (above), plus `supabase.ts` (the single client), `rows.ts` (DB row ↔ app type mapping), `sync.ts` (pure offline queue/cache logic), `database.types.ts` (generated; regenerate after migrations).
-- `src/data/` — I/O: auth, offline-first stores (`entries-store.ts`, `profile-store.ts`), the food API client, and React hooks in `data-provider.tsx`.
+- `src/data/` — I/O: auth, offline-first stores (`entries-store.ts`, `profile-store.ts`, `weight-store.ts`), the food API client, and React hooks in `data-provider.tsx`.
 - `src/components/` — UI. `ui.tsx` has the shared primitives; `barcode-scanner.web.tsx` is the camera scanner (web only).
 - `supabase/migrations/` — schema history. Every table has RLS restricting rows to their owner; keep it that way.
 - `supabase/functions/food-lookup/` — Edge Function proxying USDA FoodData Central (search) and Open Food Facts (barcodes). Reads the `FDC_API_KEY` secret. Deno code, excluded from the app's tsconfig/eslint.

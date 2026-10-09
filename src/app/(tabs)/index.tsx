@@ -3,7 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { CalendarSheet } from '@/components/calendar-sheet';
+import { FoodCalendarSheet } from '@/components/calendar-sheet';
 import { DayLog } from '@/components/day-log';
 import { SyncBanner } from '@/components/sync-banner';
 import { AppText, Button, Card, Screen } from '@/components/ui';
@@ -87,7 +87,7 @@ export default function LogScreen() {
       <WeekSummary date={date} today={today} />
 
       {calendarOpen ? (
-        <CalendarSheet selected={date} today={today} onSelect={goTo} onClose={() => setCalendarOpen(false)} />
+        <FoodCalendarSheet selected={date} today={today} onSelect={goTo} onClose={() => setCalendarOpen(false)} />
       ) : null}
     </Screen>
   );

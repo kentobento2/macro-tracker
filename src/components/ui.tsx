@@ -1,6 +1,6 @@
 // Small set of shared, mobile-first UI primitives.
 
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -22,17 +22,19 @@ export function Screen({
   children,
   scroll = true,
   edges = ['top'],
+  scrollRef,
 }: {
   children: ReactNode;
   scroll?: boolean;
   edges?: Edge[];
+  scrollRef?: RefObject<ScrollView | null>;
 }) {
   const c = useColors();
   const inner = <View style={styles.column}>{children}</View>;
   return (
     <SafeAreaView edges={edges} style={[styles.screen, { backgroundColor: c.background }]}>
       {scroll ? (
-        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           {inner}
         </ScrollView>
       ) : (

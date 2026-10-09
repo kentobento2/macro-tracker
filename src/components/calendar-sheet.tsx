@@ -4,28 +4,52 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MAX_CONTENT_WIDTH, MIN_TOUCH, Radius, Space, useColors } from '@/constants/theme';
-import { useDatesWithEntries } from '@/data/data-provider';
+import { useDatesWithEntries, useWeighIns } from '@/data/data-provider';
 import { addMonths, daysInMonth, formatMonth, monthGrid, monthOf, WEEKDAY_LABELS, type MonthKey } from '@/lib/calendar';
 import { fromDateKey, type DateKey } from '@/lib/dates';
 
 import { AppText, Button } from './ui';
 
-/** Month calendar in a bottom sheet. Days with entries get a dot; future days are disabled. */
-export function CalendarSheet({
-  selected,
-  today,
-  onSelect,
-  onClose,
-}: {
+type SheetProps = {
   selected: DateKey;
   today: DateKey;
   onSelect: (d: DateKey) => void;
   onClose: () => void;
+};
+
+/** Calendar with dots on days that have food logged. */
+export function FoodCalendarSheet(props: SheetProps) {
+  const [month, setMonth] = useState<MonthKey>(() => monthOf(props.selected));
+  const marked = useDatesWithEntries(daysInMonth(month));
+  return <CalendarSheet {...props} month={month} onMonthChange={setMonth} marked={marked} legend="Food logged" />;
+}
+
+/** Calendar with dots on days that have a weigh-in. */
+export function WeightCalendarSheet(props: SheetProps) {
+  const [month, setMonth] = useState<MonthKey>(() => monthOf(props.selected));
+  const { weighIns } = useWeighIns();
+  const marked = new Set(weighIns.map((w) => w.date));
+  return <CalendarSheet {...props} month={month} onMonthChange={setMonth} marked={marked} legend="Weighed in" />;
+}
+
+/** Month calendar in a bottom sheet. Marked days get a dot; future days are disabled. */
+function CalendarSheet({
+  selected,
+  today,
+  onSelect,
+  onClose,
+  month,
+  onMonthChange: setMonth,
+  marked: logged,
+  legend,
+}: SheetProps & {
+  month: MonthKey;
+  onMonthChange: (m: MonthKey) => void;
+  marked: ReadonlySet<DateKey>;
+  legend: string;
 }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
-  const [month, setMonth] = useState<MonthKey>(() => monthOf(selected));
-  const logged = useDatesWithEntries(daysInMonth(month));
   const atCurrentMonth = month >= monthOf(today);
 
   const pick = (d: DateKey) => {
@@ -82,7 +106,7 @@ export function CalendarSheet({
                 fromDateKey(date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }),
                 isToday ? 'today' : null,
                 isSelected ? 'selected' : null,
-                hasEntries ? 'has entries' : null,
+                hasEntries ? legend.toLowerCase() : null,
               ]
                 .filter(Boolean)
                 .join(', ');
@@ -124,7 +148,7 @@ export function CalendarSheet({
 
         <View style={styles.legend}>
           <View style={[styles.dot, { backgroundColor: c.primary }]} />
-          <AppText variant="small">Food logged</AppText>
+          <AppText variant="small">{legend}</AppText>
         </View>
 
         <View style={styles.actions}>

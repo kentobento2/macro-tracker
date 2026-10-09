@@ -16,8 +16,9 @@ import { datesWithEntries, findEntry, isDayLoaded, viewDay } from '@/lib/sync';
 import { EntriesStore } from './entries-store';
 import { ProfileStore } from './profile-store';
 import { removeKeys, userKeyPrefix } from './storage';
+import { WeightStore } from './weight-store';
 
-type Stores = { entries: EntriesStore; profile: ProfileStore; userId: string };
+type Stores = { entries: EntriesStore; profile: ProfileStore; weights: WeightStore; userId: string };
 
 const DataContext = createContext<Stores | null>(null);
 
@@ -26,13 +27,19 @@ const today = () => toDateKey(new Date());
 /** Wraps the signed-in app. Re-mount (key by user id) when the user changes. */
 export function DataProvider({ userId, children }: PropsWithChildren<{ userId: string }>) {
   const stores = useMemo<Stores>(
-    () => ({ entries: new EntriesStore(today, userId), profile: new ProfileStore(userId), userId }),
+    () => ({
+      entries: new EntriesStore(today, userId),
+      profile: new ProfileStore(userId),
+      weights: new WeightStore(userId),
+      userId,
+    }),
     [userId]
   );
 
   useEffect(() => {
     void stores.entries.init();
     void stores.profile.init();
+    void stores.weights.init();
   }, [stores]);
 
   // Retry pending changes whenever we might be back online.
@@ -41,6 +48,7 @@ export function DataProvider({ userId, children }: PropsWithChildren<{ userId: s
     if (!online) return;
     void stores.entries.flush();
     void stores.profile.push();
+    void stores.weights.flush();
   }, [online, stores]);
 
   useEffect(() => {
@@ -48,6 +56,7 @@ export function DataProvider({ userId, children }: PropsWithChildren<{ userId: s
       if (s === 'active') {
         void stores.entries.flush();
         void stores.profile.push();
+        void stores.weights.flush();
       }
     });
     return () => sub.remove();
@@ -141,10 +150,31 @@ export function useRecentFoods(limit = 15) {
 export function useSyncStatus() {
   const entries = useEntriesState();
   const profile = useProfileState();
+  const weights = useWeightState();
   return {
-    pendingCount: entries.queue.length + (profile.pending ? 1 : 0),
-    syncError: entries.syncError ?? profile.syncError,
+    pendingCount: entries.queue.length + (profile.pending ? 1 : 0) + weights.queue.length,
+    syncError: entries.syncError ?? profile.syncError ?? weights.syncError,
   };
+}
+
+export function useWeightStore() {
+  return useStores().weights;
+}
+
+function useWeightState() {
+  const store = useWeightStore();
+  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+}
+
+/** All weigh-ins (pending changes included), oldest first. Refreshed from the server on mount and when back online. */
+export function useWeighIns() {
+  const store = useWeightStore();
+  const { view, ready } = useWeightState();
+  const online = useOnline();
+  useEffect(() => {
+    if (online) void store.refresh();
+  }, [store, online]);
+  return { weighIns: view, ready };
 }
 
 export function useProfileStore() {

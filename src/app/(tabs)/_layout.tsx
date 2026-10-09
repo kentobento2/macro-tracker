@@ -29,6 +29,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="weight"
+        options={{
+          title: 'Weight',
+          tabBarIcon: ({ color }) => <Ionicons name="scale-outline" color={color} size={24} />,
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
           title: 'Settings',

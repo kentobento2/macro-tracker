@@ -1,6 +1,7 @@
 // Mapping between database rows (snake_case) and app types. Pure.
 
 import type { Database } from './database.types';
+import type { WeighIn } from './bodyweight';
 import { isDateKey } from './dates';
 import { isMeal, type FoodEntry } from './entries';
 import type { FoodSource } from './foods';
@@ -126,4 +127,18 @@ export function profileToRow(userId: string, p: Profile): ProfileInsert {
     target_carbs_g: p.targets?.carbs ?? null,
     target_fat_g: p.targets?.fat ?? null,
   };
+}
+
+type WeightRow = Database['public']['Tables']['body_weights']['Row'];
+type WeightInsert = Database['public']['Tables']['body_weights']['Insert'];
+
+export function weighInFromRow(r: WeightRow): WeighIn | null {
+  if (!isDateKey(r.entry_date)) return null;
+  const weightKg = Number(r.weight_kg);
+  return Number.isFinite(weightKg) ? { date: r.entry_date, weightKg, note: r.note } : null;
+}
+
+export function weighInToRow(userId: string, w: WeighIn): WeightInsert {
+  const note = w.note?.trim();
+  return { user_id: userId, entry_date: w.date, weight_kg: w.weightKg, note: note ? note : null };
 }

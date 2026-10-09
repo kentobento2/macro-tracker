@@ -8,6 +8,26 @@ export type Database = {
   };
   public: {
     Tables: {
+      body_weights: {
+        Row: {
+          created_at: string;
+          entry_date: string;
+          note: string | null;
+          updated_at: string;
+          user_id: string;
+          weight_kg: number;
+        };
+        Insert: {
+          created_at?: string;
+          entry_date: string;
+          note?: string | null;
+          updated_at?: string;
+          user_id?: string;
+          weight_kg: number;
+        };
+        Update: Partial<Database['public']['Tables']['body_weights']['Insert']>;
+        Relationships: [];
+      };
       food_entries: {
         Row: {
           brand: string | null;

@@ -1,5 +1,13 @@
 import type { FoodEntry } from '../entries';
-import { entryFromRow, entryToRow, profileFromRow, profileToRow, type Profile } from '../rows';
+import {
+  entryFromRow,
+  entryToRow,
+  profileFromRow,
+  profileToRow,
+  weighInFromRow,
+  weighInToRow,
+  type Profile,
+} from '../rows';
 
 const entry: FoodEntry = {
   id: '6d1f3c1e-6c3a-4f7e-9a51-2a8f5b0c1d23',
@@ -71,5 +79,25 @@ describe('profile rows', () => {
   it('treats partial targets as unset', () => {
     const row = { ...profileToRow('u1', profile), target_fat_g: null, created_at: '', updated_at: '' };
     expect(profileFromRow(row as Parameters<typeof profileFromRow>[0]).targets).toBeNull();
+  });
+});
+
+describe('weigh-in rows', () => {
+  const row = { user_id: 'u1', entry_date: '2026-10-08', weight_kg: 81.828, note: null, created_at: '', updated_at: '' };
+
+  it('maps rows to weigh-ins', () => {
+    expect(weighInFromRow(row)).toEqual({ date: '2026-10-08', weightKg: 81.828, note: null });
+    expect(weighInFromRow({ ...row, weight_kg: '81.828' as unknown as number })?.weightKg).toBe(81.828);
+    expect(weighInFromRow({ ...row, entry_date: 'bad' })).toBeNull();
+  });
+
+  it('maps weigh-ins to rows, trimming blank notes to null', () => {
+    expect(weighInToRow('u1', { date: '2026-10-08', weightKg: 80, note: '  ' })).toEqual({
+      user_id: 'u1',
+      entry_date: '2026-10-08',
+      weight_kg: 80,
+      note: null,
+    });
+    expect(weighInToRow('u1', { date: '2026-10-08', weightKg: 80, note: ' after run ' }).note).toBe('after run');
   });
 });
