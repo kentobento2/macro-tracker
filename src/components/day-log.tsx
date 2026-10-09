@@ -3,32 +3,56 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { MIN_TOUCH, Space, useColors } from '@/constants/theme';
-import { useEntries, useEntriesStore, useProfileState } from '@/data/data-provider';
+import { useEntries, useEntriesStore, useOnline, useProfileState } from '@/data/data-provider';
 import type { DateKey } from '@/lib/dates';
 import { entriesByMeal, entryNutrition, MEAL_LABELS, MEALS, totalNutrition, totalsByMeal, type FoodEntry, type Meal } from '@/lib/entries';
 import { formatKcal, formatPortion } from '@/lib/format';
 
 import { NutritionSummary } from './nutrition-summary';
-import { AppText, Card } from './ui';
+import { AppText, Banner, Card } from './ui';
 
 /** A day's totals vs targets plus its four meals. Used by Today and History. */
 export function DayLog({ date }: { date: DateKey }) {
-  const { entries } = useEntries([date]);
+  const { entries, loaded } = useEntries([date]);
+  const online = useOnline();
   const { profile } = useProfileState();
+  const emptyLabel = loaded ? 'Nothing logged' : online ? 'Loading…' : 'Not available offline';
   const byMeal = entriesByMeal(entries);
   const mealTotals = totalsByMeal(entries);
 
   return (
     <>
+      {!loaded && !online ? (
+        <Banner>This day isn’t saved on this device. Connect to the internet to see what was logged.</Banner>
+      ) : null}
       <NutritionSummary consumed={totalNutrition(entries)} targets={profile?.targets ?? null} />
       {MEALS.map((meal) => (
-        <MealSection key={meal} date={date} meal={meal} entries={byMeal[meal]} kcal={mealTotals[meal].calories} />
+        <MealSection
+          key={meal}
+          date={date}
+          meal={meal}
+          entries={byMeal[meal]}
+          kcal={mealTotals[meal].calories}
+          emptyLabel={emptyLabel}
+        />
       ))}
     </>
   );
 }
 
-function MealSection({ date, meal, entries, kcal }: { date: DateKey; meal: Meal; entries: FoodEntry[]; kcal: number }) {
+function MealSection({
+  date,
+  meal,
+  entries,
+  kcal,
+  emptyLabel,
+}: {
+  date: DateKey;
+  meal: Meal;
+  entries: FoodEntry[];
+  kcal: number;
+  emptyLabel: string;
+}) {
   const c = useColors();
   const add = () => router.push({ pathname: '/add', params: { date, meal } });
 
@@ -37,7 +61,7 @@ function MealSection({ date, meal, entries, kcal }: { date: DateKey; meal: Meal;
       <View style={styles.mealHeader}>
         <View>
           <AppText variant="heading">{MEAL_LABELS[meal]}</AppText>
-          <AppText variant="small">{entries.length ? `${formatKcal(kcal)} kcal` : 'Nothing logged'}</AppText>
+          <AppText variant="small">{entries.length ? `${formatKcal(kcal)} kcal` : emptyLabel}</AppText>
         </View>
         <Pressable
           onPress={add}

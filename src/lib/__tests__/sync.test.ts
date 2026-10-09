@@ -3,6 +3,7 @@ import {
   applyConfirmed,
   enqueue,
   findEntry,
+  isDayLoaded,
   pruneCache,
   removeOp,
   replaceDays,
@@ -108,5 +109,24 @@ describe('replaceDays', () => {
 describe('pruneCache', () => {
   it('drops days before the cutoff', () => {
     expect(pruneCache({ '2026-08-01': [c], '2026-10-08': [a] }, '2026-09-01')).toEqual({ '2026-10-08': [a] });
+  });
+});
+
+describe('isDayLoaded', () => {
+  it('distinguishes an empty loaded day from an unloaded one', () => {
+    const cache = replaceDays({}, ['2026-10-07'], []);
+    expect(isDayLoaded(cache, '2026-10-07')).toBe(true);
+    expect(viewDay(cache, [], '2026-10-07')).toEqual([]);
+    expect(isDayLoaded(cache, '2026-10-06')).toBe(false);
+  });
+
+  it('pruning the device cache only makes old days unloaded (re-fetched), never deleted on the server', () => {
+    const old = e('old', '2025-01-15', '2025-01-15T12:00:00Z');
+    const loaded = replaceDays({}, ['2025-01-15'], [old]);
+    expect(viewDay(loaded, [], '2025-01-15')).toEqual([old]);
+    const pruned = pruneCache(loaded, '2026-08-09');
+    expect(isDayLoaded(pruned, '2025-01-15')).toBe(false);
+    // Fetching it again (what the app does when you open that day online) restores it.
+    expect(viewDay(replaceDays(pruned, ['2025-01-15'], [old]), [], '2025-01-15')).toEqual([old]);
   });
 });

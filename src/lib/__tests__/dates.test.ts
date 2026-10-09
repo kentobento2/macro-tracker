@@ -1,4 +1,14 @@
-import { addDays, daysEnding, formatDayLabel, fromDateKey, isDateKey, toDateKey } from '../dates';
+import {
+  addDays,
+  daysEnding,
+  formatDayLabel,
+  formatWeekRange,
+  fromDateKey,
+  isDateKey,
+  startOfWeek,
+  toDateKey,
+  weekOf,
+} from '../dates';
 
 describe('date keys', () => {
   it('formats local dates', () => {
@@ -31,5 +41,34 @@ describe('date keys', () => {
     expect(formatDayLabel('2026-10-08', '2026-10-08')).toBe('Today');
     expect(formatDayLabel('2026-10-07', '2026-10-08')).toBe('Yesterday');
     expect(formatDayLabel('2026-10-06', '2026-10-08')).toBe('Tue, Oct 6');
+  });
+});
+
+describe('calendar weeks (Mon–Sun)', () => {
+  it('finds Monday for every day of the week', () => {
+    // 2026-10-05 is a Monday, 2026-10-11 a Sunday.
+    for (const d of ['2026-10-05', '2026-10-08', '2026-10-10', '2026-10-11']) {
+      expect(startOfWeek(d)).toBe('2026-10-05');
+    }
+    expect(startOfWeek('2026-10-12')).toBe('2026-10-12');
+  });
+  it('crosses month and year boundaries', () => {
+    expect(startOfWeek('2026-11-01')).toBe('2026-10-26'); // Sunday
+    expect(startOfWeek('2026-01-01')).toBe('2025-12-29'); // Thursday
+  });
+  it('lists Mon–Sun', () => {
+    expect(weekOf('2026-10-08')).toEqual([
+      '2026-10-05',
+      '2026-10-06',
+      '2026-10-07',
+      '2026-10-08',
+      '2026-10-09',
+      '2026-10-10',
+      '2026-10-11',
+    ]);
+  });
+  it('formats week ranges', () => {
+    expect(formatWeekRange('2026-10-08')).toBe('Oct 5 – 11');
+    expect(formatWeekRange('2026-10-01')).toBe('Sep 28 – Oct 4');
   });
 });

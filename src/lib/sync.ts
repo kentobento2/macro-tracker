@@ -74,3 +74,11 @@ export function replaceDays(cache: EntryCache, dates: readonly DateKey[], server
 export function pruneCache(cache: EntryCache, keepFrom: DateKey): EntryCache {
   return Object.fromEntries(Object.entries(cache).filter(([d]) => d >= keepFrom));
 }
+
+/**
+ * Whether the server's entries for `date` are in the device cache. A loaded day with no entries
+ * means "nothing logged"; an unloaded day means "unknown" (e.g. older than the cache window and offline).
+ */
+export function isDayLoaded(cache: EntryCache, date: DateKey): boolean {
+  return Object.prototype.hasOwnProperty.call(cache, date);
+}

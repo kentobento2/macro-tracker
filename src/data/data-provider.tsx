@@ -11,7 +11,7 @@ import { AppState, Platform } from 'react-native';
 
 import { toDateKey, type DateKey } from '@/lib/dates';
 import { recentFoods, type FoodEntry } from '@/lib/entries';
-import { findEntry, viewDay } from '@/lib/sync';
+import { findEntry, isDayLoaded, viewDay } from '@/lib/sync';
 
 import { EntriesStore } from './entries-store';
 import { ProfileStore } from './profile-store';
@@ -71,8 +71,12 @@ function useEntriesState() {
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
 }
 
-/** Entries for the given days (local view), refreshed from the server on mount and when back online. */
-export function useEntries(dates: readonly DateKey[]): { entries: FoodEntry[]; ready: boolean } {
+/**
+ * Entries for the given days (local view), refreshed from the server on mount and when back online.
+ * `loaded` is false until every day has come from the server at least once (so an empty list can mean
+ * "not loaded yet" or "not available offline" rather than "nothing logged").
+ */
+export function useEntries(dates: readonly DateKey[]): { entries: FoodEntry[]; ready: boolean; loaded: boolean } {
   const store = useEntriesStore();
   const state = useEntriesState();
   const online = useOnline();
@@ -86,7 +90,8 @@ export function useEntries(dates: readonly DateKey[]): { entries: FoodEntry[]; r
     () => key.split(',').flatMap((d) => viewDay(state.cache, state.queue, d)),
     [state.cache, state.queue, key]
   );
-  return { entries, ready: state.ready };
+  const loaded = key.split(',').every((d) => isDayLoaded(state.cache, d));
+  return { entries, ready: state.ready, loaded };
 }
 
 export function useEntry(id: string | undefined): FoodEntry | null {

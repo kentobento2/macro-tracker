@@ -24,15 +24,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Today',
-          tabBarIcon: ({ color }) => <Ionicons name="today-outline" color={color} size={24} />,
-        }}
-      />
-      <Tabs.Screen
-        name="history"
-        options={{
-          title: 'History',
-          tabBarIcon: ({ color }) => <Ionicons name="calendar-outline" color={color} size={24} />,
+          title: 'Log',
+          tabBarIcon: ({ color }) => <Ionicons name="journal-outline" color={color} size={24} />,
         }}
       />
       <Tabs.Screen

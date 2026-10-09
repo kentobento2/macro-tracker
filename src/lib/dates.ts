@@ -36,3 +36,24 @@ export function formatDayLabel(key: DateKey, today: DateKey): string {
   if (key === addDays(today, -1)) return 'Yesterday';
   return fromDateKey(key).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
+
+/** Monday of the calendar week (Mon–Sun) containing `key`. */
+export function startOfWeek(key: DateKey): DateKey {
+  const day = fromDateKey(key).getDay(); // 0 = Sunday
+  return addDays(key, day === 0 ? -6 : 1 - day);
+}
+
+/** The seven keys Mon–Sun of the week containing `key`. */
+export function weekOf(key: DateKey): DateKey[] {
+  const monday = startOfWeek(key);
+  return Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+}
+
+/** e.g. "Oct 5 – 11", or "Sep 28 – Oct 4" across months. */
+export function formatWeekRange(key: DateKey): string {
+  const [first, last] = [startOfWeek(key), addDays(startOfWeek(key), 6)].map(fromDateKey);
+  const month = (d: Date) => d.toLocaleDateString('en-US', { month: 'short' });
+  return first.getMonth() === last.getMonth()
+    ? `${month(first)} ${first.getDate()} – ${last.getDate()}`
+    : `${month(first)} ${first.getDate()} – ${month(last)} ${last.getDate()}`;
+}

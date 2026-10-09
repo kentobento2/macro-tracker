@@ -2,9 +2,8 @@
 
 Mobile-first PWA for tracking calories and macros. Two people, each with their own Google login and private log.
 
-- **Today:** breakfast, lunch, dinner and snacks with daily totals vs targets
+- **Log:** any day (arrows + Today), breakfast, lunch, dinner and snacks with totals vs targets, plus the week’s average
 - **Add food:** search USDA FoodData Central, scan a barcode (Open Food Facts), log in grams, ounces or servings
-- **History:** any past day plus a 7-day average
 - **Settings:** targets calculated from your stats (Mifflin-St Jeor), or entered by hand
 - **Offline:** the log and settings work without a connection and sync when you're back
 

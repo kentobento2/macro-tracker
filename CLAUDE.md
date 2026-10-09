@@ -29,7 +29,7 @@ Expo (TypeScript, Expo Router) app shipped primarily as a mobile-first PWA on we
 - Must work on iPhone Safari and Android Chrome, including installed to the home screen. Check changes at phone width (`npm run web`, devtools device mode).
 
 ## Layout
-- `src/app/` — Expo Router routes only. `(tabs)/` = Today, History, Settings; `add.tsx` = add/edit food (modal); `sign-in.tsx`; `+html.tsx` = web HTML shell with PWA meta tags.
+- `src/app/` — Expo Router routes only. `(tabs)/` = Log (any day via `?date=`, plus that week's Mon–Sun average) and Settings; `add.tsx` = add/edit food (modal); `sign-in.tsx`; `+html.tsx` = web HTML shell with PWA meta tags.
 - `src/lib/` — pure logic (above), plus `supabase.ts` (the single client), `rows.ts` (DB row ↔ app type mapping), `sync.ts` (pure offline queue/cache logic), `database.types.ts` (generated; regenerate after migrations).
 - `src/data/` — I/O: auth, offline-first stores (`entries-store.ts`, `profile-store.ts`), the food API client, and React hooks in `data-provider.tsx`.
 - `src/components/` — UI. `ui.tsx` has the shared primitives; `barcode-scanner.web.tsx` is the camera scanner (web only).
@@ -40,7 +40,7 @@ Expo (TypeScript, Expo Router) app shipped primarily as a mobile-first PWA on we
 ## Offline model
 - Writes go to a persisted local queue first and show immediately; the queue drains to Supabase when online. Network, auth-expiry and 5xx failures are retried; only permanent rejections are dropped (with a banner).
 - Entry ids are client-generated UUIDs so retries are idempotent upserts.
-- Reads show the device cache, then refresh from the server. Search and barcode lookup need a connection; recent foods work offline.
+- Reads show the device cache, then refresh from the server. The device keeps the last 60 days; older days load from the server on demand (never deleted server-side). An unloaded day shows "Loading…" / "Not available offline", never "Nothing logged". Search and barcode lookup need a connection; recent foods work offline.
 
 ## Commands
 ```bash
