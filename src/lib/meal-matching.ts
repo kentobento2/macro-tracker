@@ -78,6 +78,16 @@ function findServing(servings: readonly Serving[], unitWord: string): Serving | 
   return servings.find((s) => words(s.label).includes(target)) ?? null;
 }
 
+/** The serving that means "one of it" for counted foods: large, then medium, then a whole/piece/item serving. */
+const COUNT_SIZES = ['large', 'medium', 'whole', 'piece', 'item', 'each'];
+function findCountServing(servings: readonly Serving[]): Serving | null {
+  for (const size of COUNT_SIZES) {
+    const s = servings.find((sv) => labelAmount(sv.label) === 1 && words(sv.label).includes(size));
+    if (s) return s;
+  }
+  return null;
+}
+
 function checkSize(grams: number, servings?: number): string | null {
   if (servings !== undefined && servings > MAX_SERVINGS) return `That's more than ${MAX_SERVINGS} servings in one item.`;
   if (grams > MAX_ITEM_GRAMS) return `That's more than ${MAX_ITEM_GRAMS / 1000} kg in one item.`;
@@ -120,7 +130,13 @@ export function resolvePortion(food: FoodItem, quantity: number, unitRaw: string
     };
   }
 
-  const serving = GENERIC_SERVING.has(unit) ? (food.servings[0] ?? null) : findServing(food.servings, unit);
+  let serving = GENERIC_SERVING.has(unit) ? (food.servings[0] ?? null) : findServing(food.servings, unit);
+  let note: string | undefined;
+  if (!serving && words(food.name).includes(singular(unit))) {
+    // "2 eggs" against "Egg, whole, raw" (servings "1 large", "1 medium"…): one egg = the standard size.
+    serving = findCountServing(food.servings);
+    if (serving) note = `Counted each ${singular(unit)} as "${serving.label}".`;
+  }
   if (!serving) {
     const options = food.servings.map((s) => `"${s.label}"`).join(', ');
     return {
@@ -136,7 +152,7 @@ export function resolvePortion(food: FoodItem, quantity: number, unitRaw: string
   const grams = portionToGrams(servings, 'serving', serving);
   const tooBig = checkSize(grams, servings);
   if (tooBig) return { ok: false, error: tooBig };
-  return { ok: true, value: { portion: { quantity: servings, unit: 'serving', serving }, grams } };
+  return { ok: true, value: { portion: { quantity: servings, unit: 'serving', serving }, grams, ...(note ? { note } : {}) } };
 }
 
 // ---------- Name matching ----------
@@ -148,32 +164,56 @@ export function nameTokens(s: string): string[] {
 }
 
 /**
- * 0..1: mostly how many of the user's words appear in the food (coverage), a little for how few extra words
- * the food has (precision). Preparation words ("grilled") only add a small bonus when present.
+ * Descriptor words in database names ("Egg, whole, raw, fresh"; "Chicken breast, skin not eaten") that
+ * don't make a food a different dish, so they don't count against it.
  */
-export function scoreMatch(query: string, food: Pick<FoodItem, 'name' | 'brand'>, preparation?: string): number {
+const NEUTRAL = new Set([
+  'whole', 'raw', 'fresh', 'cooked', 'plain', 'regular', 'unprepared', 'prepared', 'ns', 'nfs', 'form', 'type',
+  'to', 'as', 'from', 'meat', 'only', 'boneless', 'skinless', 'skin', 'not', 'eaten', 'without', 'added',
+  'large', 'medium', 'small', 'unenriched', 'enriched', 'or',
+]);
+
+/** Taken off when the user didn't name the food's brand: a generic food is the better default. */
+const UNNAMED_BRAND_PENALTY = 0.2;
+
+export type MatchScore = {
+  /** 0..1, higher is better. */
+  score: number;
+  /** Every word the user said is in the food's name or brand: safe to use without asking. */
+  covered: boolean;
+};
+
+/**
+ * Mostly how many of the user's words appear in the food (coverage), plus how few unrelated words the food
+ * name has (precision; descriptors like "whole, raw" and the user's preparation words don't count against
+ * it). Preparation words ("grilled") that appear add a bonus; a brand the user didn't mention costs a little.
+ */
+export function scoreMatch(query: string, food: Pick<FoodItem, 'name' | 'brand'>, preparation?: string): MatchScore {
   const q = nameTokens(query);
-  const f = nameTokens(`${food.name} ${food.brand ?? ''}`);
-  if (q.length === 0 || f.length === 0) return 0;
-  const hits = q.filter((w) => f.includes(w)).length;
-  const coverage = hits / q.length;
-  const precision = hits / f.length;
+  const nameAll = nameTokens(food.name);
+  const brand = nameTokens(food.brand ?? '');
+  if (q.length === 0 || nameAll.length + brand.length === 0) return { score: 0, covered: false };
   const prep = preparation ? nameTokens(preparation) : [];
-  const prepBonus = prep.length ? (0.05 * prep.filter((w) => f.includes(w)).length) / prep.length : 0;
-  return Math.min(1, 0.75 * coverage + 0.25 * precision + prepBonus);
+
+  const hits = q.filter((w) => nameAll.includes(w) || brand.includes(w)).length;
+  const coverage = hits / q.length;
+  const name = nameAll.filter((w) => !NEUTRAL.has(w));
+  const precision = name.length ? name.filter((w) => q.includes(w) || prep.includes(w)).length / name.length : 1;
+  const prepBonus = prep.length ? (0.1 * prep.filter((w) => nameAll.includes(w)).length) / prep.length : 0;
+  const brandPenalty = brand.length && !brand.some((w) => q.includes(w)) ? UNNAMED_BRAND_PENALTY : 0;
+
+  const score = Math.max(0, Math.min(1, 0.75 * coverage + 0.25 * precision + prepBonus - brandPenalty));
+  return { score, covered: coverage === 1 };
 }
 
-/** A match must cover every word the user said (score >= this) to be used without asking. */
-export const MIN_MATCH_SCORE = 0.75;
-
-/** Foods scored and sorted best first; ties keep the original (relevance) order. */
+/** Foods scored and sorted best first: full matches first, then by score; ties keep the original order. */
 export function rankFoods<T extends Pick<FoodItem, 'name' | 'brand'>>(
   query: string,
   foods: readonly T[],
   preparation?: string
-): { food: T; score: number }[] {
+): ({ food: T } & MatchScore)[] {
   return foods
-    .map((food, i) => ({ food, score: scoreMatch(query, food, preparation), i }))
-    .sort((a, b) => b.score - a.score || a.i - b.i)
-    .map(({ food, score }) => ({ food, score }));
+    .map((food, i) => ({ food, ...scoreMatch(query, food, preparation), i }))
+    .sort((a, b) => Number(b.covered) - Number(a.covered) || b.score - a.score || a.i - b.i)
+    .map(({ food, score, covered }) => ({ food, score, covered }));
 }

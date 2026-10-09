@@ -1,7 +1,6 @@
 import type { FoodItem } from '../foods';
 import {
   labelAmount,
-  MIN_MATCH_SCORE,
   nameTokens,
   rankFoods,
   resolvePortion,
@@ -40,6 +39,19 @@ describe('resolvePortion', () => {
     if (!r.ok) throw new Error(r.error);
     return r.value;
   };
+
+  it('counts "2 eggs" as the standard (large) size when the food has no "egg" serving', () => {
+    const egg = food('Egg, whole, raw, fresh', [
+      { label: '1 cup (4.86 large eggs)', grams: 243 },
+      { label: '1 medium', grams: 44 },
+      { label: '1 large', grams: 50 },
+    ]);
+    const r = ok(resolvePortion(egg, 2, 'eggs'));
+    expect(r.grams).toBe(100);
+    expect(r.note).toContain('"1 large"');
+    // Not for words that aren't the food itself.
+    expect(resolvePortion(egg, 2, 'slice').ok).toBe(false);
+  });
 
   it('converts mass units', () => {
     expect(ok(resolvePortion(banana, 150, 'g')).grams).toBe(150);
@@ -86,26 +98,43 @@ describe('name matching', () => {
     expect(nameTokens('Two eggs with the toast (buttered)')).toEqual(['two', 'egg', 'toast']);
   });
 
-  it('prefers foods covering every word the user said', () => {
-    expect(scoreMatch('banana', banana)).toBeGreaterThanOrEqual(MIN_MATCH_SCORE);
-    expect(scoreMatch('chicken breast', food('Chicken breast, grilled'))).toBeGreaterThanOrEqual(MIN_MATCH_SCORE);
-    expect(scoreMatch('loco moco', food('Moco Chocolate Bar'))).toBeLessThan(MIN_MATCH_SCORE);
+  it('marks a match as covered only when every word the user said is in it', () => {
+    expect(scoreMatch('banana', banana).covered).toBe(true);
+    expect(scoreMatch('chicken breast', food('Chicken breast, grilled')).covered).toBe(true);
+    expect(scoreMatch('loco moco', food('Moco Chocolate Bar')).covered).toBe(false);
   });
 
   it('uses brand words too', () => {
-    expect(scoreMatch('quest bar', food('Protein Bar, Cookies & Cream', [], 'Quest'))).toBeGreaterThanOrEqual(MIN_MATCH_SCORE);
+    const quest = scoreMatch('quest bar', food('Protein Bar, Cookies & Cream', [], 'Quest'));
+    expect(quest.covered).toBe(true);
   });
 
-  it('gives preparation a small tie-breaking bonus', () => {
-    const grilled = scoreMatch('chicken breast', food('Chicken breast, grilled'), 'grilled');
-    const fried = scoreMatch('chicken breast', food('Chicken breast, fried'), 'grilled');
-    expect(grilled).toBeGreaterThan(fried);
+  it('does not count descriptors like "whole, raw, fresh" against a food', () => {
+    const ranked = rankFoods('egg', [food('Egg, Benedict'), food('Egg, creamed'), food('Egg, whole, raw, fresh')]);
+    expect(ranked[0].food.name).toBe('Egg, whole, raw, fresh');
+    expect(ranked[0].score).toBe(1);
   });
 
-  it('ranks best first and keeps relevance order on ties', () => {
-    const ranked = rankFoods('banana', [food('Banana chips'), food('Bread'), banana]);
-    expect(ranked[0].food.name).toBe('Banana chips'); // tie with "Banana, raw" keeps earlier one
-    expect(ranked.map((r) => r.food.name).at(-1)).toBe('Bread');
+  it('prefers generic foods over brands the user did not name', () => {
+    const generic = food('Chicken breast, baked, broiled, or roasted, skin not eaten, from raw');
+    const tyson = food('Chicken Breast', [], 'Tyson');
+    expect(rankFoods('chicken breast', [tyson, generic])[0].food).toBe(generic);
+    // …but a brand the user did name wins.
+    expect(rankFoods('tyson chicken breast', [generic, tyson])[0].food).toBe(tyson);
+  });
+
+  it('rewards the preparation the user said', () => {
+    const grilled = food('Chicken breast, grilled without sauce, skin not eaten');
+    const fried = food('Chicken breast, fried, coated, skin eaten');
+    const tyson = food('Chicken Breast', [], 'Tyson');
+    expect(rankFoods('chicken breast', [tyson, fried, grilled], 'grilled')[0].food).toBe(grilled);
+  });
+
+  it('ranks covered matches first, then by score, keeping relevance order on ties', () => {
+    const ranked = rankFoods('banana bread', [banana, food('Bread, banana'), food('Bread')]);
+    expect(ranked[0].food.name).toBe('Bread, banana');
+    const ties = rankFoods('banana', [food('Banana, fresh'), food('Banana, raw')]);
+    expect(ties.map((r) => r.food.name)).toEqual(['Banana, fresh', 'Banana, raw']);
   });
 });
 

@@ -25,7 +25,7 @@ import {
 import { formatPortion } from '../lib/format';
 import { foodKey, type FoodItem } from '../lib/foods';
 import { nutritionForGrams, remainingNutrition, type Nutrition } from '../lib/macros';
-import { MIN_MATCH_SCORE, rankFoods, resolvePortion } from '../lib/meal-matching';
+import { rankFoods, resolvePortion } from '../lib/meal-matching';
 import { dateKeyInTimeZone } from '../lib/tz';
 import { KG_PER_POUND } from '../lib/units';
 import { loadSavedFoods, resolveFoodRef, SOURCE_LABELS, type FoodLookup, type MatchSource } from './foods';
@@ -204,20 +204,20 @@ const previewMeal: ToolDef<{
 
         const savedRanked = rankFoods(item.food_name, savedFoods, item.preparation);
         candidates.push(...savedRanked.slice(0, 3).map((r) => ({ ...r, source: 'saved' as const })));
-        let best = savedRanked[0]?.score >= MIN_MATCH_SCORE ? candidates[0] : undefined;
+        let best = savedRanked[0]?.covered ? candidates[0] : undefined;
 
         if (!best) {
           const ext = await ctx.foods.searchExternal(item.food_name);
           ext.problems.forEach((p) => problems.add(p));
           const usdaRanked = rankFoods(item.food_name, ext.usda, item.preparation).map((r) => ({ ...r, source: 'usda' as const }));
           candidates.push(...usdaRanked.slice(0, 3));
-          best = usdaRanked[0]?.score >= MIN_MATCH_SCORE ? usdaRanked[0] : undefined;
+          best = usdaRanked[0]?.covered ? usdaRanked[0] : undefined;
           if (!best) {
             const off = await ctx.foods.searchOff(item.food_name);
             if (off.problem) problems.add(off.problem);
             const offRanked = rankFoods(item.food_name, off.foods, item.preparation).map((r) => ({ ...r, source: 'off' as const }));
             candidates.push(...offRanked.slice(0, 3));
-            best = offRanked[0]?.score >= MIN_MATCH_SCORE ? offRanked[0] : undefined;
+            best = offRanked[0]?.covered ? offRanked[0] : undefined;
           }
         }
 
