@@ -1,4 +1,4 @@
-import { normalizeOffProduct, normalizeUsdaFood } from '../foods';
+import { normalizeOffProduct, normalizeUsdaFood, tidyName } from '../foods';
 
 describe('normalizeUsdaFood', () => {
   // Trimmed from a real FoodData Central search result (Survey FNDDS 2709224).
@@ -123,5 +123,59 @@ describe('normalizeOffProduct', () => {
 
   it('returns null with no nutrition data', () => {
     expect(normalizeOffProduct({ product_name: 'Mystery', nutriments: {} }, 'x')).toBeNull();
+  });
+});
+
+describe('normalizeUsdaFood (branded)', () => {
+  // Trimmed from a real FoodData Central branded result (fdcId 2756285).
+  const yogurt = {
+    fdcId: 2756285,
+    description: 'Chobani Yogurt, Greek, Blended, Coffee',
+    dataType: 'Branded',
+    brandName: 'Chobani',
+    servingSize: 150,
+    servingSizeUnit: 'g',
+    foodNutrients: [
+      { nutrientId: 1003, unitName: 'G', value: 7.33 },
+      { nutrientId: 1004, unitName: 'G', value: 1.67 },
+      { nutrientId: 1005, unitName: 'G', value: 12 },
+      { nutrientId: 1008, unitName: 'KCAL', value: 93.3 },
+    ],
+  };
+
+  it('keeps brand and uses the label serving', () => {
+    const food = normalizeUsdaFood(yogurt)!;
+    expect(food.brand).toBe('Chobani');
+    expect(food.per100g).toEqual({ calories: 93.3, protein: 7.33, carbs: 12, fat: 1.67 });
+    expect(food.servings).toEqual([{ label: '1 serving (150 g)', grams: 150 }]);
+  });
+
+  it('uses the household serving text when present', () => {
+    const food = normalizeUsdaFood({ ...yogurt, servingSize: 227, servingSizeUnit: 'GRM', householdServingFullText: '1 CUP' })!;
+    expect(food.servings[0]).toEqual({ label: '1 cup (227 g)', grams: 227 });
+  });
+
+  it('treats milliliter servings like grams and ignores other units', () => {
+    expect(normalizeUsdaFood({ ...yogurt, servingSizeUnit: 'MLT' })!.servings).toHaveLength(1);
+    expect(normalizeUsdaFood({ ...yogurt, servingSizeUnit: 'OZ' })!.servings).toEqual([]);
+  });
+
+  it('falls back to brand owner, and title-cases shouting names', () => {
+    const food = normalizeUsdaFood({ ...yogurt, description: 'GREEK NONFAT YOGURT, PLAIN', brandName: '', brandOwner: 'KIRKLAND SIGNATURE' })!;
+    expect(food.name).toBe('Greek Nonfat Yogurt, Plain');
+    expect(food.brand).toBe('Kirkland Signature');
+  });
+
+  it('skips branded records with no nutrition data', () => {
+    expect(normalizeUsdaFood({ ...yogurt, foodNutrients: [] })).toBeNull();
+  });
+});
+
+describe('tidyName', () => {
+  it('only rewrites all-caps names', () => {
+    expect(tidyName('BANANA CHIPS (SWEETENED)')).toBe('Banana Chips (Sweetened)');
+    expect(tidyName('Banana, raw')).toBe('Banana, raw');
+    expect(tidyName('  Rice   cakes ')).toBe('Rice cakes');
+    expect(tidyName('100%')).toBe('100%');
   });
 });

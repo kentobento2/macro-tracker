@@ -28,9 +28,15 @@ async function invoke<T>(body: object): Promise<T> {
   throw new FoodLookupError("Can't reach the food database. Check your connection.", 'offline');
 }
 
-export async function searchFoods(query: string): Promise<FoodItem[]> {
-  const { foods } = await invoke<{ foods: UsdaFood[] }>({ type: 'search', query });
-  return foods.map(normalizeUsdaFood).filter((f): f is FoodItem => f !== null);
+export type SearchResults = { whole: FoodItem[]; branded: FoodItem[] };
+
+const normalizeAll = (list: UsdaFood[] | undefined) =>
+  (list ?? []).map(normalizeUsdaFood).filter((f): f is FoodItem => f !== null);
+
+/** USDA whole foods (Foundation / SR Legacy / Survey) and USDA branded products, as separate lists. */
+export async function searchFoods(query: string): Promise<SearchResults> {
+  const { foods, branded } = await invoke<{ foods: UsdaFood[]; branded?: UsdaFood[] }>({ type: 'search', query });
+  return { whole: normalizeAll(foods), branded: normalizeAll(branded) };
 }
 
 /** Returns null when the barcode isn't in Open Food Facts or has no nutrition data. */

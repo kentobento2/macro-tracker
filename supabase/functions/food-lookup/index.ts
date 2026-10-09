@@ -1,7 +1,7 @@
 // Food lookup proxy. Keeps the USDA API key server-side and trims upstream payloads.
 // No nutrition math happens here — the app normalizes and computes in src/lib/.
 //
-// POST { type: "search", query: string }  -> USDA FoodData Central (whole foods)
+// POST { type: "search", query: string }  -> USDA FoodData Central: { foods: whole foods, branded: branded products }
 // POST { type: "barcode", code: string }  -> Open Food Facts
 //
 // Secrets: FDC_API_KEY (falls back to USDA's heavily rate-limited DEMO_KEY).
@@ -33,22 +33,17 @@ async function requireUser(req: Request) {
   return error ? null : data.user;
 }
 
-async function searchUsda(query: string) {
-  const apiKey = Deno.env.get('FDC_API_KEY') ?? 'DEMO_KEY';
-  const res = await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, dataType: USDA_DATA_TYPES, pageSize: 25 }),
-  });
-  if (res.status === 429) return json({ error: 'rate_limited' }, 429);
-  if (!res.ok) return json({ error: 'upstream_error', status: res.status }, 502);
-
-  const data = await res.json();
-  // deno-lint-ignore no-explicit-any
-  const foods = (data.foods ?? []).map((f: any) => ({
+// deno-lint-ignore no-explicit-any
+function trimUsdaFood(f: any) {
+  return {
     fdcId: f.fdcId,
     description: f.description,
     dataType: f.dataType,
+    brandName: f.brandName || undefined,
+    brandOwner: f.brandOwner || undefined,
+    servingSize: f.servingSize,
+    servingSizeUnit: f.servingSizeUnit,
+    householdServingFullText: f.householdServingFullText || undefined,
     foodNutrients: (f.foodNutrients ?? [])
       // deno-lint-ignore no-explicit-any
       .filter((n: any) => USDA_NUTRIENT_IDS.has(n.nutrientId))
@@ -57,8 +52,40 @@ async function searchUsda(query: string) {
     foodMeasures: (f.foodMeasures ?? [])
       // deno-lint-ignore no-explicit-any
       .map((m: any) => ({ disseminationText: m.disseminationText, gramWeight: m.gramWeight })),
-  }));
-  return json({ foods });
+  };
+}
+
+class UpstreamError extends Error {
+  constructor(readonly status: number) {
+    super(`USDA ${status}`);
+  }
+}
+
+async function usdaSearch(query: string, dataType: string[], pageSize: number) {
+  const apiKey = Deno.env.get('FDC_API_KEY') ?? 'DEMO_KEY';
+  const res = await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, dataType, pageSize }),
+  });
+  if (!res.ok) throw new UpstreamError(res.status);
+  const data = await res.json();
+  return (data.foods ?? []).map(trimUsdaFood);
+}
+
+/** Whole foods and branded products as separate lists, so branded results don't crowd out basics. */
+async function searchUsda(query: string) {
+  try {
+    const [foods, branded] = await Promise.all([
+      usdaSearch(query, USDA_DATA_TYPES, 20),
+      usdaSearch(query, ['Branded'], 20),
+    ]);
+    return json({ foods, branded });
+  } catch (e) {
+    if (e instanceof UpstreamError && e.status === 429) return json({ error: 'rate_limited' }, 429);
+    if (e instanceof UpstreamError) return json({ error: 'upstream_error', status: e.status }, 502);
+    throw e;
+  }
 }
 
 async function lookupBarcode(code: string) {

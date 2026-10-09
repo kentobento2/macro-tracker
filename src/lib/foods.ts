@@ -36,9 +36,25 @@ export type UsdaFood = {
   fdcId: number;
   description: string;
   dataType?: string;
+  // Branded foods only:
+  brandName?: string;
+  brandOwner?: string;
+  servingSize?: number;
+  servingSizeUnit?: string;
+  householdServingFullText?: string;
   foodNutrients?: { nutrientId: number; unitName?: string; value?: number }[];
   foodMeasures?: { disseminationText?: string; gramWeight?: number }[];
 };
+
+/** Some sources shout ("GREEK NONFAT YOGURT"); turn all-caps names into title case. Mixed case is left alone. */
+export function tidyName(name: string): string {
+  const t = name.trim().replace(/\s+/g, ' ');
+  if (!/[A-Z]/.test(t) || t !== t.toUpperCase()) return t;
+  return t.toLowerCase().replace(/(^|[\s(\-/&,])([a-z])/g, (_m, sep: string, ch: string) => sep + ch.toUpperCase());
+}
+
+// Branded serving sizes come in grams or milliliters (ml treated as g, like Open Food Facts).
+const GRAM_UNITS = new Set(['G', 'GRM', 'GM', 'ML', 'MLT']);
 
 const USDA = {
   energy: 1008,
@@ -49,7 +65,7 @@ const USDA = {
   carbs: 1005,
 } as const;
 
-/** USDA search results for Foundation / SR Legacy / Survey foods report nutrients per 100 g. */
+/** USDA search results report nutrients per 100 g for Foundation / SR Legacy / Survey and Branded foods. */
 export function normalizeUsdaFood(f: UsdaFood): FoodItem | null {
   const nutrients = f.foodNutrients ?? [];
   const get = (id: number, unit?: string) => {
@@ -67,6 +83,15 @@ export function normalizeUsdaFood(f: UsdaFood): FoodItem | null {
 
   const seen = new Set<string>();
   const servings: Serving[] = [];
+  // Branded: the label serving, e.g. "1 cup (227 g)" or "1 serving (150 g)".
+  const servingGrams = num(f.servingSize);
+  if (servingGrams && GRAM_UNITS.has((f.servingSizeUnit ?? '').toUpperCase())) {
+    const household = f.householdServingFullText?.trim();
+    const amount = `${Math.round(servingGrams * 10) / 10} g`;
+    const label = household ? `${household.toLowerCase()} (${amount})` : `1 serving (${amount})`;
+    seen.add(label);
+    servings.push({ label, grams: servingGrams });
+  }
   for (const m of f.foodMeasures ?? []) {
     const grams = num(m.gramWeight);
     const label = m.disseminationText?.trim();
@@ -79,8 +104,8 @@ export function normalizeUsdaFood(f: UsdaFood): FoodItem | null {
   return {
     source: 'usda',
     sourceId: String(f.fdcId),
-    name: f.description.trim(),
-    brand: null,
+    name: tidyName(f.description),
+    brand: tidyName(f.brandName || f.brandOwner || '') || null,
     per100g: { calories, protein, carbs, fat },
     servings,
     caloriesDerived,

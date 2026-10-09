@@ -30,7 +30,7 @@ import {
   useRecentFoods,
   useToday,
 } from '@/data/data-provider';
-import { FoodLookupError, lookupBarcode, searchFoods } from '@/data/food-api';
+import { FoodLookupError, lookupBarcode, searchFoods, type SearchResults } from '@/data/food-api';
 import { isDateKey, type DateKey } from '@/lib/dates';
 import {
   buildEntry,
@@ -102,7 +102,7 @@ function SearchStep({ onPick }: { onPick: (f: FoodItem, portion?: Portion) => vo
   const recent = useRecentFoods(20);
   const { favorites } = useFavorites();
   const [query, setQuery] = useState('');
-  const [search, setSearch] = useState<{ query: string; foods?: FoodItem[]; error?: string } | null>(null);
+  const [search, setSearch] = useState<{ query: string; foods?: SearchResults; error?: string } | null>(null);
   const [scanning, setScanning] = useState(false);
   const [barcode, setBarcode] = useState('');
   const [lookupState, setLookupState] = useState<{ loading: boolean; error: string | null }>({
@@ -224,12 +224,24 @@ function SearchStep({ onPick }: { onPick: (f: FoodItem, portion?: Portion) => vo
       {error ? <Banner>{error}</Banner> : null}
       {loading ? <ActivityIndicator style={{ marginVertical: Space.md }} /> : null}
 
-      {results ? (
+      {results && results.whole.length + results.branded.length === 0 ? (
+        <Card>
+          <AppText variant="muted">No matches. Try a simpler term.</AppText>
+        </Card>
+      ) : null}
+      {results && results.whole.length > 0 ? (
         <Card style={styles.list}>
-          <AppText variant="label">Results from USDA</AppText>
-          {results.length === 0 ? <AppText variant="muted">No matches. Try a simpler term.</AppText> : null}
-          {results.map((f) => (
-            <FoodRow key={`${f.source}:${f.sourceId}`} food={f} onPress={() => onPick(f)} />
+          <AppText variant="label">Whole foods · USDA</AppText>
+          {results.whole.map((f) => (
+            <FoodRow key={foodKey(f)} food={f} onPress={() => onPick(f)} />
+          ))}
+        </Card>
+      ) : null}
+      {results && results.branded.length > 0 ? (
+        <Card style={styles.list}>
+          <AppText variant="label">Brands & packaged · USDA</AppText>
+          {results.branded.map((f) => (
+            <FoodRow key={foodKey(f)} food={f} onPress={() => onPick(f)} />
           ))}
         </Card>
       ) : null}
