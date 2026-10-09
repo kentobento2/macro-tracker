@@ -1,6 +1,6 @@
 # Macro Tracker
 
-Expo (TypeScript, Expo Router) app shipped primarily as a mobile-first PWA on web, backed by Supabase. Product requirements live in `spec.md`.
+Expo (TypeScript, Expo Router) app shipped primarily as a mobile-first PWA on web, backed by Supabase. Product requirements live in `SPEC.md`.
 
 @AGENTS.md
 
