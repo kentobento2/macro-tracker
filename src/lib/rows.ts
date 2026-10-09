@@ -4,6 +4,7 @@ import type { Database } from './database.types';
 import type { WeighIn } from './bodyweight';
 import { isDateKey } from './dates';
 import { isMeal, type FoodEntry } from './entries';
+import type { Favorite } from './favorites';
 import type { FoodSource } from './foods';
 import type { ActivityLevel, Goal, Sex, Targets } from './targets';
 import type { PortionUnit, Serving } from './units';
@@ -141,4 +142,56 @@ export function weighInFromRow(r: WeightRow): WeighIn | null {
 export function weighInToRow(userId: string, w: WeighIn): WeightInsert {
   const note = w.note?.trim();
   return { user_id: userId, entry_date: w.date, weight_kg: w.weightKg, note: note ? note : null };
+}
+
+type FavoriteRow = Database['public']['Tables']['favorite_foods']['Row'];
+type FavoriteInsert = Database['public']['Tables']['favorite_foods']['Insert'];
+
+export function favoriteFromRow(r: FavoriteRow): Favorite | null {
+  const source = oneOf(SOURCES, r.source);
+  const unit = oneOf(UNITS, r.unit);
+  if (!source || !unit) return null;
+  const serving =
+    r.serving_grams !== null ? { label: r.serving_label ?? 'serving', grams: Number(r.serving_grams) } : null;
+  if (unit === 'serving' && !serving) return null;
+  return {
+    key: r.food_key,
+    food: {
+      source,
+      sourceId: r.source_id,
+      name: r.food_name,
+      brand: r.brand,
+      per100g: {
+        calories: Number(r.kcal_per_100g),
+        protein: Number(r.protein_per_100g),
+        carbs: Number(r.carbs_per_100g),
+        fat: Number(r.fat_per_100g),
+      },
+      servings: parseServings(r.servings),
+      caloriesDerived: false,
+    },
+    portion: { quantity: Number(r.quantity), unit, serving: unit === 'serving' ? serving : null },
+    savedAt: r.updated_at,
+  };
+}
+
+export function favoriteToRow(userId: string, f: Favorite): FavoriteInsert {
+  return {
+    user_id: userId,
+    food_key: f.key,
+    source: f.food.source,
+    source_id: f.food.sourceId,
+    food_name: f.food.name,
+    brand: f.food.brand,
+    kcal_per_100g: f.food.per100g.calories,
+    protein_per_100g: f.food.per100g.protein,
+    carbs_per_100g: f.food.per100g.carbs,
+    fat_per_100g: f.food.per100g.fat,
+    servings: f.food.servings,
+    quantity: f.portion.quantity,
+    unit: f.portion.unit,
+    serving_label: f.portion.serving?.label ?? null,
+    serving_grams: f.portion.serving?.grams ?? null,
+    updated_at: f.savedAt,
+  };
 }

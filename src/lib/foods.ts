@@ -131,3 +131,8 @@ export function normalizeOffProduct(p: OffProduct, fallbackCode: string): FoodIt
     caloriesDerived,
   };
 }
+
+/** Stable identity for a food across logs and favorites: "usda:2709224", "off:0737…", or "name:banana". */
+export function foodKey(food: Pick<FoodItem, 'source' | 'sourceId' | 'name'>): string {
+  return food.sourceId ? `${food.source}:${food.sourceId}` : `name:${food.name.trim().toLowerCase()}`;
+}

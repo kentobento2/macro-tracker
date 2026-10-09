@@ -28,6 +28,48 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['body_weights']['Insert']>;
         Relationships: [];
       };
+      favorite_foods: {
+        Row: {
+          brand: string | null;
+          carbs_per_100g: number;
+          created_at: string;
+          fat_per_100g: number;
+          food_key: string;
+          food_name: string;
+          kcal_per_100g: number;
+          protein_per_100g: number;
+          quantity: number;
+          serving_grams: number | null;
+          serving_label: string | null;
+          servings: Json;
+          source: string;
+          source_id: string | null;
+          unit: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          brand?: string | null;
+          carbs_per_100g: number;
+          created_at?: string;
+          fat_per_100g: number;
+          food_key: string;
+          food_name: string;
+          kcal_per_100g: number;
+          protein_per_100g: number;
+          quantity: number;
+          serving_grams?: number | null;
+          serving_label?: string | null;
+          servings?: Json;
+          source: string;
+          source_id?: string | null;
+          unit: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Update: Partial<Database['public']['Tables']['favorite_foods']['Insert']>;
+        Relationships: [];
+      };
       food_entries: {
         Row: {
           brand: string | null;

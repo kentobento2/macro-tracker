@@ -1,7 +1,10 @@
 import type { FoodEntry } from '../entries';
+import type { Favorite } from '../favorites';
 import {
   entryFromRow,
   entryToRow,
+  favoriteFromRow,
+  favoriteToRow,
   profileFromRow,
   profileToRow,
   weighInFromRow,
@@ -99,5 +102,32 @@ describe('weigh-in rows', () => {
       note: null,
     });
     expect(weighInToRow('u1', { date: '2026-10-08', weightKg: 80, note: ' after run ' }).note).toBe('after run');
+  });
+});
+
+describe('favorite rows', () => {
+  const fav: Favorite = {
+    key: 'usda:2709224',
+    food: {
+      source: 'usda',
+      sourceId: '2709224',
+      name: 'Banana, raw',
+      brand: null,
+      per100g: { calories: 97, protein: 0.74, carbs: 22.71, fat: 0.28 },
+      servings: [{ label: '1 banana', grams: 126 }],
+      caloriesDerived: false,
+    },
+    portion: { quantity: 1, unit: 'serving', serving: { label: '1 banana', grams: 126 } },
+    savedAt: '2026-10-08T12:00:00.000Z',
+  };
+
+  it('round-trips', () => {
+    const row = { ...favoriteToRow('u1', fav), created_at: '' } as Parameters<typeof favoriteFromRow>[0];
+    expect(favoriteFromRow(row)).toEqual(fav);
+  });
+
+  it('rejects a serving unit without serving grams', () => {
+    const row = { ...favoriteToRow('u1', fav), serving_grams: null, created_at: '' } as Parameters<typeof favoriteFromRow>[0];
+    expect(favoriteFromRow(row)).toBeNull();
   });
 });

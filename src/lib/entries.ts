@@ -1,7 +1,7 @@
 // Food log entries and the totals derived from them. Pure.
 
 import type { DateKey } from './dates';
-import type { FoodItem, FoodSource } from './foods';
+import { foodKey, type FoodItem, type FoodSource } from './foods';
 import { averageNutrition, nutritionForGrams, sumNutrition, type Nutrition } from './macros';
 import { portionToGrams, type PortionUnit, type Serving } from './units';
 
@@ -132,7 +132,7 @@ export function recentFoods(entries: readonly FoodEntry[], limit: number): { foo
   const seen = new Set<string>();
   const out: { food: FoodItem; last: FoodEntry }[] = [];
   for (const e of sorted) {
-    const key = e.sourceId ? `${e.source}:${e.sourceId}` : `name:${e.foodName.toLowerCase()}`;
+    const key = foodKey({ source: e.source, sourceId: e.sourceId, name: e.foodName });
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({ food: foodFromEntry(e), last: e });

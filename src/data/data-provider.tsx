@@ -14,11 +14,18 @@ import { recentFoods, type FoodEntry } from '@/lib/entries';
 import { datesWithEntries, findEntry, isDayLoaded, viewDay } from '@/lib/sync';
 
 import { EntriesStore } from './entries-store';
+import { FavoritesStore } from './favorites-store';
 import { ProfileStore } from './profile-store';
 import { removeKeys, userKeyPrefix } from './storage';
 import { WeightStore } from './weight-store';
 
-type Stores = { entries: EntriesStore; profile: ProfileStore; weights: WeightStore; userId: string };
+type Stores = {
+  entries: EntriesStore;
+  profile: ProfileStore;
+  weights: WeightStore;
+  favorites: FavoritesStore;
+  userId: string;
+};
 
 const DataContext = createContext<Stores | null>(null);
 
@@ -31,6 +38,7 @@ export function DataProvider({ userId, children }: PropsWithChildren<{ userId: s
       entries: new EntriesStore(today, userId),
       profile: new ProfileStore(userId),
       weights: new WeightStore(userId),
+      favorites: new FavoritesStore(userId),
       userId,
     }),
     [userId]
@@ -40,6 +48,7 @@ export function DataProvider({ userId, children }: PropsWithChildren<{ userId: s
     void stores.entries.init();
     void stores.profile.init();
     void stores.weights.init();
+    void stores.favorites.init();
   }, [stores]);
 
   // Retry pending changes whenever we might be back online.
@@ -49,6 +58,7 @@ export function DataProvider({ userId, children }: PropsWithChildren<{ userId: s
     void stores.entries.flush();
     void stores.profile.push();
     void stores.weights.flush();
+    void stores.favorites.flush();
   }, [online, stores]);
 
   useEffect(() => {
@@ -57,6 +67,7 @@ export function DataProvider({ userId, children }: PropsWithChildren<{ userId: s
         void stores.entries.flush();
         void stores.profile.push();
         void stores.weights.flush();
+        void stores.favorites.flush();
       }
     });
     return () => sub.remove();
@@ -151,9 +162,10 @@ export function useSyncStatus() {
   const entries = useEntriesState();
   const profile = useProfileState();
   const weights = useWeightState();
+  const favorites = useFavoritesState();
   return {
-    pendingCount: entries.queue.length + (profile.pending ? 1 : 0) + weights.queue.length,
-    syncError: entries.syncError ?? profile.syncError ?? weights.syncError,
+    pendingCount: entries.queue.length + (profile.pending ? 1 : 0) + weights.queue.length + favorites.queue.length,
+    syncError: entries.syncError ?? profile.syncError ?? weights.syncError ?? favorites.syncError,
   };
 }
 
@@ -175,6 +187,26 @@ export function useWeighIns() {
     if (online) void store.refresh();
   }, [store, online]);
   return { weighIns: view, ready };
+}
+
+export function useFavoritesStore() {
+  return useStores().favorites;
+}
+
+function useFavoritesState() {
+  const store = useFavoritesStore();
+  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+}
+
+/** Favorite foods (pending changes included), newest first. Refreshed on mount and when back online. */
+export function useFavorites() {
+  const store = useFavoritesStore();
+  const { view, ready } = useFavoritesState();
+  const online = useOnline();
+  useEffect(() => {
+    if (online) void store.refresh();
+  }, [store, online]);
+  return { favorites: view, ready };
 }
 
 export function useProfileStore() {

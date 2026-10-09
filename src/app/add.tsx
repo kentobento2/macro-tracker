@@ -20,7 +20,16 @@ import {
   StatColumn,
 } from '@/components/ui';
 import { MIN_TOUCH, Space, useColors } from '@/constants/theme';
-import { useEntriesStore, useEntry, useOnline, useProfileState, useRecentFoods, useToday } from '@/data/data-provider';
+import {
+  useEntriesStore,
+  useEntry,
+  useFavorites,
+  useFavoritesStore,
+  useOnline,
+  useProfileState,
+  useRecentFoods,
+  useToday,
+} from '@/data/data-provider';
 import { FoodLookupError, lookupBarcode, searchFoods } from '@/data/food-api';
 import { isDateKey, type DateKey } from '@/lib/dates';
 import {
@@ -33,10 +42,12 @@ import {
   mealForTime,
   type FoodEntry,
   type Meal,
+  type Portion,
 } from '@/lib/entries';
 import { formatKcal } from '@/lib/format';
 import { macroCaloriePercents, percentOfTarget } from '@/lib/macros';
-import type { FoodItem, FoodSource } from '@/lib/foods';
+import { filterFavorites, makeFavorite } from '@/lib/favorites';
+import { foodKey, type FoodItem, type FoodSource } from '@/lib/foods';
 import { parseNumber } from '@/lib/settings-form';
 import { gramsToQuantity, portionToGrams, type PortionUnit, type Serving } from '@/lib/units';
 
@@ -50,10 +61,10 @@ export default function AddFoodScreen() {
   const params = useLocalSearchParams<{ date?: string; meal?: string; entryId?: string }>();
   const today = useToday();
   const existing = useEntry(params.entryId);
-  const [picked, setPicked] = useState<FoodItem | null>(null);
+  const [picked, setPicked] = useState<{ food: FoodItem; portion?: Portion } | null>(null);
   // Editing starts on the portion step with the logged food.
   const existingFood = useMemo(() => (existing ? foodFromEntry(existing) : null), [existing]);
-  const food = picked ?? existingFood;
+  const food = picked?.food ?? existingFood;
 
   const date: DateKey = existing?.date ?? (isDateKey(params.date) ? params.date : today);
   const meal: Meal = existing?.meal ?? (isMeal(params.meal) ? params.meal : mealForTime(new Date().getHours()));
@@ -69,10 +80,11 @@ export default function AddFoodScreen() {
           date={date}
           initialMeal={meal}
           existing={existing}
+          initialPortion={existing ? null : (picked?.portion ?? null)}
           onBack={existing ? undefined : () => setPicked(null)}
         />
       ) : (
-        <SearchStep onPick={setPicked} />
+        <SearchStep onPick={(f, portion) => setPicked({ food: f, portion })} />
       )}
     </Screen>
   );
@@ -85,9 +97,10 @@ function close() {
 
 // ---------- Search ----------
 
-function SearchStep({ onPick }: { onPick: (f: FoodItem) => void }) {
+function SearchStep({ onPick }: { onPick: (f: FoodItem, portion?: Portion) => void }) {
   const online = useOnline();
   const recent = useRecentFoods(20);
+  const { favorites } = useFavorites();
   const [query, setQuery] = useState('');
   const [search, setSearch] = useState<{ query: string; foods?: FoodItem[]; error?: string } | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -146,10 +159,17 @@ function SearchStep({ onPick }: { onPick: (f: FoodItem) => void }) {
     }
   };
 
+  const favoriteMatches = useMemo(() => filterFavorites(favorites, trimmed), [favorites, trimmed]);
+  const favoriteKeys = useMemo(() => new Set(favorites.map((f) => f.key)), [favorites]);
+
   const recentMatches = useMemo(() => {
     const q = trimmed.toLowerCase();
-    return recent.filter((r) => !q || r.food.name.toLowerCase().includes(q) || r.food.brand?.toLowerCase().includes(q));
-  }, [recent, trimmed]);
+    return recent.filter(
+      (r) =>
+        !favoriteKeys.has(foodKey(r.food)) &&
+        (!q || r.food.name.toLowerCase().includes(q) || r.food.brand?.toLowerCase().includes(q))
+    );
+  }, [recent, trimmed, favoriteKeys]);
 
   if (scanning) {
     return (
@@ -214,11 +234,24 @@ function SearchStep({ onPick }: { onPick: (f: FoodItem) => void }) {
         </Card>
       ) : null}
 
+      {!results && favoriteMatches.length > 0 ? (
+        <Card style={styles.list}>
+          <AppText variant="label">Favorites</AppText>
+          {favoriteMatches.map((fav) => (
+            <FoodRow key={fav.key} food={fav.food} favorite onPress={() => onPick(fav.food, fav.portion)} />
+          ))}
+        </Card>
+      ) : null}
+
       {!results && recentMatches.length > 0 ? (
         <Card style={styles.list}>
           <AppText variant="label">Recent</AppText>
           {recentMatches.map(({ food, last }) => (
-            <FoodRow key={last.id} food={food} onPress={() => onPick(food)} />
+            <FoodRow
+              key={last.id}
+              food={food}
+              onPress={() => onPick(food, { quantity: last.quantity, unit: last.unit, serving: last.serving })}
+            />
           ))}
         </Card>
       ) : null}
@@ -231,7 +264,7 @@ function ScanIcon() {
   return <Ionicons name="barcode-outline" size={20} color={c.primary} />;
 }
 
-function FoodRow({ food, onPress }: { food: FoodItem; onPress: () => void }) {
+function FoodRow({ food, onPress, favorite }: { food: FoodItem; onPress: () => void; favorite?: boolean }) {
   const c = useColors();
   const n = food.per100g;
   return (
@@ -247,6 +280,7 @@ function FoodRow({ food, onPress }: { food: FoodItem; onPress: () => void }) {
           {Math.round(n.carbs)} · F {Math.round(n.fat)}
         </AppText>
       </View>
+      {favorite ? <Ionicons name="heart" size={16} color={c.fat} accessibilityLabel="Favorite" /> : null}
       <Ionicons name="chevron-forward" size={18} color={c.muted} />
     </Pressable>
   );
@@ -271,30 +305,39 @@ function PortionStep({
   date,
   initialMeal,
   existing,
+  initialPortion,
   onBack,
 }: {
   food: FoodItem;
   date: DateKey;
   initialMeal: Meal;
   existing: FoodEntry | null;
+  /** Portion to start from (a favorite's saved portion, or the last portion logged for a recent food). */
+  initialPortion: Portion | null;
   onBack?: () => void;
 }) {
   const c = useColors();
   const store = useEntriesStore();
   const today = useToday();
   const { profile } = useProfileState();
+  const favoritesStore = useFavoritesStore();
+  const { favorites } = useFavorites();
+
+  // Start from the entry being edited, else a provided portion, else 1 serving / 100 g.
+  const startCandidate: Portion | null = existing
+    ? { quantity: existing.quantity, unit: existing.unit, serving: existing.serving }
+    : initialPortion;
+  const start = startCandidate && (startCandidate.unit !== 'serving' || startCandidate.serving) ? startCandidate : null;
 
   const [choice, setChoice] = useState<UnitChoice>(() => {
-    if (existing) {
-      return existing.unit === 'serving' && existing.serving
-        ? { unit: 'serving', serving: existing.serving }
-        : { unit: existing.unit === 'oz' ? 'oz' : 'g' };
+    if (start) {
+      return start.unit === 'serving' && start.serving
+        ? { unit: 'serving', serving: start.serving }
+        : { unit: start.unit === 'oz' ? 'oz' : 'g' };
     }
     return food.servings[0] ? { unit: 'serving', serving: food.servings[0] } : { unit: 'g' };
   });
-  const [qtyText, setQtyText] = useState(() =>
-    existing ? String(existing.quantity) : food.servings[0] ? '1' : '100'
-  );
+  const [qtyText, setQtyText] = useState(() => (start ? String(start.quantity) : food.servings[0] ? '1' : '100'));
   const [meal, setMeal] = useState<Meal>(initialMeal);
 
   const choices: { choice: UnitChoice; label: string }[] = [
@@ -353,6 +396,17 @@ function PortionStep({
     close();
   };
 
+  const key = foodKey(food);
+  const isFavorite = favorites.some((f) => f.key === key);
+  /** Favorite with the current portion, or remove from favorites. */
+  const toggleFavorite = () => {
+    if (isFavorite) favoritesStore.remove(key);
+    else if (entry && quantity !== null)
+      favoritesStore.save(
+        makeFavorite(food, { quantity, unit: choice.unit, serving: servingOf(choice) }, new Date().toISOString())
+      );
+  };
+
   /** Log the same food and portion again as a new entry today (keeps the original). */
   const logAgainToday = () => {
     if (!entry) return;
@@ -394,13 +448,17 @@ function PortionStep({
           <AppText variant="small">Calories weren’t listed, so they’re calculated from the macros.</AppText>
         ) : null}
 
-        {onBack || existing ? (
-          <View style={[styles.actions, { borderTopColor: c.border }]}>
+        <View style={[styles.actions, { borderTopColor: c.border }]}>
+            <ActionButton
+              icon={isFavorite ? 'heart' : 'heart-outline'}
+              label={isFavorite ? 'Favorited' : 'Favorite'}
+              active={isFavorite}
+              onPress={toggleFavorite}
+            />
             {onBack ? <ActionButton icon="swap-horizontal" label="Change" onPress={onBack} /> : null}
             {existing ? <ActionButton icon="copy-outline" label="Log today" onPress={logAgainToday} /> : null}
             {existing ? <ActionButton icon="trash-outline" label="Delete" tone="danger" onPress={remove} /> : null}
           </View>
-        ) : null}
       </Card>
 
       <Card>
