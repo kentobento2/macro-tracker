@@ -15,7 +15,10 @@ export default function Root({ children }: PropsWithChildren) {
 
         {/* PWA */}
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#F2F3F5" />
+        {/* Status bar / title bar color, following the phone's light or dark mode (the app's background colors in
+            src/constants/theme.ts). The manifest's theme_color can only hold one value; it's used before this loads. */}
+        <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F2F3F5" />
+        <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0C0F12" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
