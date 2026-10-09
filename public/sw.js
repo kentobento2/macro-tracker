@@ -1,8 +1,8 @@
 // Service worker: lets the installed app open offline.
 // Same-origin GETs are network-first with a cache fallback. Supabase and food APIs are
 // cross-origin and never cached here — the app keeps its own offline copy of your log.
-const CACHE = 'macro-tracker-v2';
-const APP_SHELL = ['/', '/manifest.json', '/icon.png'];
+const CACHE = 'macro-tracker-v3';
+const APP_SHELL = ['/', '/manifest.json', '/icon.png', '/icon-192.png', '/apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
