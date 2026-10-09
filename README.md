@@ -8,7 +8,7 @@ Mobile-first PWA for tracking calories and macros. Two people, each with their o
 - **Settings:** targets calculated from your stats (Mifflin-St Jeor), or entered by hand
 - **Offline:** the log and settings work without a connection and sync when you're back
 
-Built with Expo (TypeScript, Expo Router) and Supabase.
+Built with Expo (TypeScript, Expo Router) and Supabase. Live at https://macro-tracker-rho-two.vercel.app (deploys automatically from `main` via Vercel). Sign-up is limited to an email allowlist (`private.allowed_emails` in Supabase).
 
 ## Run locally
 
@@ -19,7 +19,7 @@ Built with Expo (TypeScript, Expo Router) and Supabase.
 ## One-time Supabase setup
 
 - **Google sign-in:** Supabase Dashboard → Authentication → Sign In / Providers → Google (needs a Google Cloud OAuth client).
-- **Redirect URLs:** Authentication → URL Configuration → add `http://localhost:8081` (and your deployed URL).
+- **Redirect URLs:** Authentication → URL Configuration → Site URL `https://macro-tracker-rho-two.vercel.app`; redirect URLs `https://macro-tracker-rho-two.vercel.app` and `http://localhost:8081`.
 - **USDA API key:** get a free key at https://fdc.nal.usda.gov/api-key-signup and add it as the Edge Function secret `FDC_API_KEY`.
 
 Database migrations are in `supabase/migrations/`; the food lookup Edge Function is in `supabase/functions/food-lookup/`.
