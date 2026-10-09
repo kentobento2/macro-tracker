@@ -32,6 +32,38 @@ export type Database = {
         Update: Partial<Database['public']['Tables']['api_tokens']['Insert']>;
         Relationships: [];
       };
+      custom_foods: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          brand: string | null;
+          serving_label: string;
+          serving_grams: number | null;
+          kcal: number | null;
+          protein_g: number;
+          carbs_g: number;
+          fat_g: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          user_id?: string;
+          name: string;
+          brand?: string | null;
+          serving_label: string;
+          serving_grams?: number | null;
+          kcal?: number | null;
+          protein_g: number;
+          carbs_g: number;
+          fat_g: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['custom_foods']['Insert']>;
+        Relationships: [];
+      };
       body_weights: {
         Row: {
           created_at: string;

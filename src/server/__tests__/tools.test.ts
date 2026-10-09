@@ -138,7 +138,7 @@ describe('preview_meal', () => {
   it('returns a clear not_found message instead of guessing', async () => {
     const r = data(await call('preview_meal', { items: [{ food_name: 'loco moco', quantity: 1, unit: 'plate' }] }));
     expect(r.items[0].status).toBe('not_found');
-    expect(r.items[0].message).toMatch(/No confident match for "loco moco".*approximate breakdown/);
+    expect(r.items[0].message).toMatch(/No confident match for "loco moco".*create_custom_food/);
     expect(foods.calls).toContain('off:loco moco'); // tried Open Food Facts last
   });
 
@@ -277,6 +277,77 @@ describe('delete_log_entry', () => {
     const r = data(await call('delete_log_entry', { entry_id: saved.entry_id }));
     expect(r.deleted.food).toBe('Banana, raw');
     expect(r.daily_summary.consumed.calories).toBe(0);
+  });
+});
+
+describe('create_custom_food', () => {
+  const bowl = { name: 'Poke bowl', brand: 'Ono Seafood', serving_label: 'bowl', calories: 750, protein_g: 40, carbs_g: 70, fat_g: 15 };
+
+  it('saves a food without a known weight and logs it in servings with the exact numbers', async () => {
+    const r = data(await call('create_custom_food', bowl));
+    expect(r.replaced_existing).toBe(false);
+    expect(r.saved).toMatchObject({ name: 'Poke bowl', serving: '1 bowl', serving_grams: null, per_serving: { calories: 750, protein_g: 40 } });
+    const ref = r.saved.food_ref as string;
+    expect(ref).toMatch(/^custom:/);
+    expect(db.tables.custom_foods.filter((f) => f.user_id === A)).toHaveLength(1);
+
+    const preview = data(await call('preview_meal', { items: [{ food_name: 'poke bowl', quantity: 1.5, unit: 'bowl' }] }));
+    expect(preview.items[0]).toMatchObject({ status: 'matched', source: 'saved', food_ref: ref, grams: null, calories: 1125, protein_g: 60 });
+
+    const logged = data(await call('log_meal', { items: [{ food_ref: ref, quantity: 2, unit: 'serving' }], meal: 'dinner' }));
+    expect(logged.saved[0]).toMatchObject({ food: 'Poke bowl', portion: '2 × 1 bowl', grams: null, calories: 1500, protein_g: 80 });
+
+    // Grams/ounces make no sense without a weight.
+    const bad = await call('log_meal', { items: [{ food_ref: ref, quantity: 300, unit: 'g' }], meal: 'dinner' });
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.error).toMatch(/no known weight/);
+  });
+
+  it('derives missing calories from the macros and flags it', async () => {
+    const r = data(await call('create_custom_food', { name: 'Overnight oats', serving_label: '1 jar', serving_grams: 300, protein_g: 20, carbs_g: 50, fat_g: 10 }));
+    expect(r.saved.per_serving.calories).toBe(20 * 4 + 50 * 4 + 10 * 9);
+    expect(r.saved.calories_derived_from_macros).toBe(true);
+    const p = data(await call('preview_meal', { items: [{ food_name: 'overnight oats', quantity: 150, unit: 'g' }] }));
+    expect(p.items[0]).toMatchObject({ status: 'matched', grams: 150, calories: 185 });
+  });
+
+  it('updates the custom food with the same name instead of duplicating it; past entries keep their numbers', async () => {
+    const first = data(await call('create_custom_food', bowl));
+    await call('log_meal', { items: [{ food_ref: first.saved.food_ref, quantity: 1, unit: 'serving' }], meal: 'lunch' });
+    const second = data(await call('create_custom_food', { ...bowl, name: 'POKE BOWL', calories: 800 }));
+    expect(second.replaced_existing).toBe(true);
+    expect(second.saved.food_ref).toBe(first.saved.food_ref);
+    expect(db.tables.custom_foods.filter((f) => f.user_id === A)).toHaveLength(1);
+    const day = data(await call('get_daily_summary', {}));
+    expect(day.meals.lunch.entries[0].calories).toBe(750);
+  });
+
+  it('rejects impossible numbers with a message for the assistant', async () => {
+    const r = await call('create_custom_food', { name: 'Chip', serving_grams: 10, calories: 500, protein_g: 1, carbs_g: 1, fat_g: 1 });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/Not saved: .*more calories/);
+    expect(db.tables.custom_foods ?? []).toHaveLength(0);
+  });
+
+  it('lists custom foods in get_recent_foods and finds them in search_foods', async () => {
+    await call('create_custom_food', bowl);
+    const recent = data(await call('get_recent_foods', {}));
+    expect(recent.custom_foods[0]).toMatchObject({ name: 'Poke bowl', usual_portion: { quantity: 1, unit: 'serving' } });
+    const found = data(await call('search_foods', { query: 'poke bowl' }));
+    expect(found.saved[0]).toMatchObject({ name: 'Poke bowl', servings: [{ label: '1 bowl', grams: null }] });
+  });
+
+  it("keeps each user's custom foods private", async () => {
+    const mine = data(await call('create_custom_food', bowl, A));
+    // B can't see, search, log or overwrite A's food.
+    expect(data(await call('get_recent_foods', {}, B)).custom_foods).toEqual([]);
+    expect(data(await call('search_foods', { query: 'poke bowl' }, B)).saved).toEqual([]);
+    const log = await call('log_meal', { items: [{ food_ref: mine.saved.food_ref, quantity: 1, unit: 'serving' }], meal: 'lunch' }, B);
+    expect(log.ok).toBe(false);
+    const theirs = data(await call('create_custom_food', { ...bowl, calories: 1 }, B));
+    expect(theirs.replaced_existing).toBe(false);
+    expect(theirs.saved.food_ref).not.toBe(mine.saved.food_ref);
+    expect(db.tables.custom_foods.find((f) => f.user_id === A)?.kcal).toBe(750);
   });
 });
 

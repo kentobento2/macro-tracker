@@ -70,7 +70,7 @@ describe('MCP over HTTP', () => {
     expect((await rpc('tools/list', {})).status).toBe(401);
   });
 
-  it('initializes and lists all nine tools with annotations', async () => {
+  it('initializes and lists all ten tools with annotations', async () => {
     const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
     expect(init.status).toBe(200);
     expect((await init.json()).result.serverInfo.name).toBe('macro-tracker');
@@ -78,7 +78,7 @@ describe('MCP over HTTP', () => {
     const res = await rpc('tools/list', {});
     const tools = (await res.json()).result.tools as { name: string; annotations: Record<string, unknown>; inputSchema: { properties: object } }[];
     expect(tools.map((t) => t.name).sort()).toEqual(
-      ['delete_log_entry', 'get_daily_summary', 'get_recent_foods', 'get_weight_trend', 'log_meal', 'log_weight', 'preview_meal', 'search_foods', 'update_log_entry'].sort()
+      ['create_custom_food', 'delete_log_entry', 'get_daily_summary', 'get_recent_foods', 'get_weight_trend', 'log_meal', 'log_weight', 'preview_meal', 'search_foods', 'update_log_entry'].sort()
     );
     expect(tools.find((t) => t.name === 'delete_log_entry')!.annotations).toMatchObject({ destructiveHint: true });
     expect(tools.find((t) => t.name === 'preview_meal')!.annotations).toMatchObject({ readOnlyHint: true });

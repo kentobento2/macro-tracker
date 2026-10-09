@@ -9,8 +9,11 @@ import { type WeighIn } from '../lib/bodyweight';
 import type { Database } from '../lib/database.types';
 import type { DateKey } from '../lib/dates';
 import type { FoodEntry } from '../lib/entries';
+import type { CustomFood } from '../lib/custom-foods';
 import type { Favorite } from '../lib/favorites';
 import {
+  customFoodFromRow,
+  customFoodToRow,
   entryFromRow,
   entryToRow,
   favoriteFromRow,
@@ -37,6 +40,10 @@ export interface UserStore {
   /** False if no such entry belongs to this user. */
   deleteEntry(id: string): Promise<boolean>;
   favorites(): Promise<Favorite[]>;
+  customFoods(): Promise<CustomFood[]>;
+  insertCustomFood(food: CustomFood): Promise<void>;
+  /** Replaces one of this user's custom foods; false if it isn't theirs. */
+  updateCustomFood(food: CustomFood): Promise<boolean>;
   saveWeight(w: WeighIn): Promise<void>;
   weightsBetween(from: DateKey, to: DateKey): Promise<WeighIn[]>;
 }
@@ -110,6 +117,29 @@ export function createUserStore(db: Db, userId: string): UserStore {
       const { data, error } = await db.from('favorite_foods').select('*').eq('user_id', userId);
       if (error) fail('Loading favorites failed', error);
       return (data ?? []).map(favoriteFromRow).filter((f): f is Favorite => f !== null);
+    },
+
+    async customFoods() {
+      const { data, error } = await db.from('custom_foods').select('*').eq('user_id', userId);
+      if (error) fail('Loading custom foods failed', error);
+      return (data ?? []).map(customFoodFromRow).filter((f): f is CustomFood => f !== null);
+    },
+
+    async insertCustomFood(food) {
+      const { error } = await db.from('custom_foods').insert(customFoodToRow(userId, food));
+      if (error) fail('Saving the custom food failed', error);
+    },
+
+    async updateCustomFood(food) {
+      const { id: _id, user_id: _user, ...patch } = customFoodToRow(userId, food);
+      const { data, error } = await db
+        .from('custom_foods')
+        .update(patch)
+        .eq('user_id', userId)
+        .eq('id', food.id)
+        .select('id');
+      if (error) fail('Updating the custom food failed', error);
+      return (data ?? []).length === 1;
     },
 
     async saveWeight(w) {

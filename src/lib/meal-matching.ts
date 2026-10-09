@@ -4,7 +4,7 @@
 
 import type { Portion } from './entries';
 import type { FoodItem } from './foods';
-import { GRAMS_PER_OUNCE, portionToGrams, type Serving } from './units';
+import { GRAMS_PER_OUNCE, hasKnownWeight, portionToGrams, type Serving } from './units';
 
 /** Largest single item we accept: 3 kg, or 50 servings. Anything bigger is almost certainly a mistake. */
 export const MAX_ITEM_GRAMS = 3000;
@@ -103,6 +103,14 @@ export function resolvePortion(food: FoodItem, quantity: number, unitRaw: string
     return { ok: false, error: 'Quantity must be a number greater than zero.' };
   }
   const unit = unitRaw.trim().toLowerCase().replace(/\.$/, '');
+
+  if ((unit in GRAMS_PER || OUNCES.has(unit) || unit in MILLILITERS) && !hasKnownWeight(food)) {
+    const labels = food.servings.map((s) => `"${s.label}"`).join(', ');
+    return {
+      ok: false,
+      error: `"${food.name}" has no known weight, so it can't be measured in ${unitRaw}. Log it in servings (${labels}), e.g. quantity 1, unit "serving".`,
+    };
+  }
 
   if (unit in GRAMS_PER) {
     const grams = quantity * GRAMS_PER[unit];

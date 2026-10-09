@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { BarcodeScanner } from '@/components/barcode-scanner';
+import { CustomFoodForm } from '@/components/custom-food-form';
 import {
   ActionButton,
   AppText,
@@ -21,6 +22,7 @@ import {
 } from '@/components/ui';
 import { MIN_TOUCH, Space, useColors } from '@/constants/theme';
 import {
+  useCustomFoods,
   useEntriesStore,
   useEntry,
   useFavorites,
@@ -38,6 +40,7 @@ import {
   withServings,
   type SearchResults,
 } from '@/data/food-api';
+import { customFoodToItem, filterCustomFoods, type CustomFood } from '@/lib/custom-foods';
 import { isDateKey, type DateKey } from '@/lib/dates';
 import {
   buildEntry,
@@ -52,11 +55,11 @@ import {
   type Portion,
 } from '@/lib/entries';
 import { formatKcal } from '@/lib/format';
-import { macroCaloriePercents, percentOfTarget } from '@/lib/macros';
+import { macroCaloriePercents, nutritionForGrams, percentOfTarget } from '@/lib/macros';
 import { filterFavorites, makeFavorite } from '@/lib/favorites';
 import { foodKey, type FoodItem, type FoodSource } from '@/lib/foods';
 import { parseNumber } from '@/lib/settings-form';
-import { gramsToQuantity, portionToGrams, type PortionUnit, type Serving } from '@/lib/units';
+import { gramsToQuantity, hasKnownWeight, portionToGrams, type PortionUnit, type Serving } from '@/lib/units';
 
 const SOURCE_LABELS: Record<FoodSource, string> = {
   usda: 'USDA FoodData Central',
@@ -64,11 +67,18 @@ const SOURCE_LABELS: Record<FoodSource, string> = {
   custom: 'Custom',
 };
 
+/** The custom-food form, when open: creating one (name prefilled from the search) or editing one. */
+type CustomFormState = { kind: 'create'; name: string } | { kind: 'edit'; food: CustomFood };
+
+const servingPortion = (food: FoodItem): Portion | undefined =>
+  food.servings[0] ? { quantity: 1, unit: 'serving', serving: food.servings[0] } : undefined;
+
 export default function AddFoodScreen() {
   const params = useLocalSearchParams<{ date?: string; meal?: string; entryId?: string }>();
   const today = useToday();
   const existing = useEntry(params.entryId);
   const [picked, setPicked] = useState<{ food: FoodItem; portion?: Portion } | null>(null);
+  const [customForm, setCustomForm] = useState<CustomFormState | null>(null);
   // Editing starts on the portion step with the logged food.
   const existingFood = useMemo(() => (existing ? foodFromEntry(existing) : null), [existing]);
   const food = picked?.food ?? existingFood;
@@ -76,11 +86,29 @@ export default function AddFoodScreen() {
   const date: DateKey = existing?.date ?? (isDateKey(params.date) ? params.date : today);
   const meal: Meal = existing?.meal ?? (isMeal(params.meal) ? params.meal : mealForTime(new Date().getHours()));
 
+  const title = customForm ? (customForm.kind === 'edit' ? 'Edit custom food' : 'New custom food') : params.entryId ? 'Edit entry' : 'Add food';
+
   return (
     <Screen edges={['bottom']}>
-      <Stack.Screen options={{ title: params.entryId ? 'Edit entry' : 'Add food' }} />
+      <Stack.Screen options={{ title }} />
       {params.entryId && !existing ? (
         <AppText variant="muted">This entry no longer exists.</AppText>
+      ) : customForm ? (
+        <CustomFoodForm
+          existing={customForm.kind === 'edit' ? customForm.food : null}
+          initialName={customForm.kind === 'create' ? customForm.name : ''}
+          onSaved={(saved) => {
+            // Continue to the portion step with the new definition (1 serving to start).
+            const item = customFoodToItem(saved);
+            setPicked({ food: item, portion: servingPortion(item) });
+            setCustomForm(null);
+          }}
+          onDeleted={() => {
+            setPicked(null);
+            setCustomForm(null);
+          }}
+          onCancel={() => setCustomForm(null)}
+        />
       ) : food ? (
         <PortionStep
           food={food}
@@ -89,9 +117,13 @@ export default function AddFoodScreen() {
           existing={existing}
           initialPortion={existing ? null : (picked?.portion ?? null)}
           onBack={existing ? undefined : () => setPicked(null)}
+          onEditCustomFood={existing ? undefined : (f) => setCustomForm({ kind: 'edit', food: f })}
         />
       ) : (
-        <SearchStep onPick={(f, portion) => setPicked({ food: f, portion })} />
+        <SearchStep
+          onPick={(f, portion) => setPicked({ food: f, portion })}
+          onCreateCustom={(name) => setCustomForm({ kind: 'create', name })}
+        />
       )}
     </Screen>
   );
@@ -104,10 +136,17 @@ function close() {
 
 // ---------- Search ----------
 
-function SearchStep({ onPick }: { onPick: (f: FoodItem, portion?: Portion) => void }) {
+function SearchStep({
+  onPick,
+  onCreateCustom,
+}: {
+  onPick: (f: FoodItem, portion?: Portion) => void;
+  onCreateCustom: (name: string) => void;
+}) {
   const online = useOnline();
   const recent = useRecentFoods(20);
   const { favorites } = useFavorites();
+  const { customFoods } = useCustomFoods();
   const [query, setQuery] = useState('');
   const [search, setSearch] = useState<{ query: string; foods?: SearchResults; error?: string } | null>(null);
   const [offSearch, setOffSearch] = useState<{ query: string; foods?: FoodItem[]; error?: string } | null>(null);
@@ -207,7 +246,16 @@ function SearchStep({ onPick }: { onPick: (f: FoodItem, portion?: Portion) => vo
     }
   };
 
-  const favoriteMatches = useMemo(() => filterFavorites(favorites, trimmed), [favorites, trimmed]);
+  const customMatches = useMemo(
+    () => filterCustomFoods(customFoods, trimmed).map(customFoodToItem),
+    [customFoods, trimmed]
+  );
+  const customKeys = useMemo(() => new Set(customFoods.map((f) => foodKey(customFoodToItem(f)))), [customFoods]);
+  // A custom food shows under My foods (with its current numbers), not again as a favorite or recent snapshot.
+  const favoriteMatches = useMemo(
+    () => filterFavorites(favorites, trimmed).filter((f) => !customKeys.has(f.key)),
+    [favorites, trimmed, customKeys]
+  );
   const favoriteKeys = useMemo(() => new Set(favorites.map((f) => f.key)), [favorites]);
 
   const recentMatches = useMemo(() => {
@@ -215,9 +263,10 @@ function SearchStep({ onPick }: { onPick: (f: FoodItem, portion?: Portion) => vo
     return recent.filter(
       (r) =>
         !favoriteKeys.has(foodKey(r.food)) &&
+        !customKeys.has(foodKey(r.food)) &&
         (!q || r.food.name.toLowerCase().includes(q) || r.food.brand?.toLowerCase().includes(q))
     );
-  }, [recent, trimmed, favoriteKeys]);
+  }, [recent, trimmed, favoriteKeys, customKeys]);
 
   if (scanning) {
     return (
@@ -238,10 +287,12 @@ function SearchStep({ onPick }: { onPick: (f: FoodItem, portion?: Portion) => vo
         autoCorrect={false}
         returnKeyType="search"
         accessibilityLabel="Search foods"
+        // Fields flex to fill rows; on the page itself that would stretch the box when the list is short.
+        style={styles.noGrow}
       />
 
-      {online ? (
-        <View style={styles.row}>
+      <View style={styles.row}>
+        {online ? (
           <Button
             title="Scan barcode"
             variant="secondary"
@@ -249,9 +300,20 @@ function SearchStep({ onPick }: { onPick: (f: FoodItem, portion?: Portion) => vo
             style={styles.flex}
             icon={<ScanIcon />}
           />
-        </View>
-      ) : (
-        <Banner>You’re offline. Search and barcodes need a connection; you can still log recent foods.</Banner>
+        ) : null}
+        <Button
+          title="Custom food"
+          variant="secondary"
+          onPress={() => onCreateCustom(trimmed)}
+          style={styles.flex}
+          icon={<CreateIcon />}
+          accessibilityLabel="Create a custom food"
+        />
+      </View>
+      {online ? null : (
+        <Banner>
+          You’re offline. Search and barcodes need a connection; you can still log your own, favorite and recent foods.
+        </Banner>
       )}
 
       {online ? (
@@ -272,9 +334,19 @@ function SearchStep({ onPick }: { onPick: (f: FoodItem, portion?: Portion) => vo
       {error ? <Banner>{error}</Banner> : null}
       {loading ? <ActivityIndicator style={{ marginVertical: Space.md }} /> : null}
 
+      {customMatches.length > 0 ? (
+        <Card style={styles.list}>
+          <AppText variant="label">My foods</AppText>
+          {customMatches.map((f) => (
+            <FoodRow key={foodKey(f)} food={f} onPress={() => onPick(f, servingPortion(f))} />
+          ))}
+        </Card>
+      ) : null}
+
       {results && results.whole.length + results.branded.length === 0 && offCurrent && offFoods.length === 0 ? (
         <Card>
-          <AppText variant="muted">No matches. Try a simpler term.</AppText>
+          <AppText variant="muted">No matches. Try a simpler term, or add it yourself if you know its nutrition.</AppText>
+          <Button title={`Create “${trimmed}” as a custom food`} variant="ghost" onPress={() => onCreateCustom(trimmed)} />
         </Card>
       ) : null}
       {results && results.whole.length > 0 ? (
@@ -334,9 +406,16 @@ function ScanIcon() {
   return <Ionicons name="barcode-outline" size={20} color={c.primary} />;
 }
 
+function CreateIcon() {
+  const c = useColors();
+  return <Ionicons name="create-outline" size={20} color={c.primary} />;
+}
+
 function FoodRow({ food, onPress, favorite }: { food: FoodItem; onPress: () => void; favorite?: boolean }) {
   const c = useColors();
-  const n = food.per100g;
+  // Custom foods were entered per serving, so show them that way.
+  const perServing = food.source === 'custom' && food.servings[0] ? food.servings[0] : null;
+  const n = perServing ? nutritionForGrams(food.per100g, perServing.grams) : food.per100g;
   return (
     <Pressable
       onPress={onPress}
@@ -346,8 +425,9 @@ function FoodRow({ food, onPress, favorite }: { food: FoodItem; onPress: () => v
       <View style={styles.flex}>
         <AppText numberOfLines={2}>{food.name}</AppText>
         <AppText variant="small" numberOfLines={1}>
-          {food.brand ? `${food.brand} · ` : ''}per 100 g: {formatKcal(n.calories)} kcal · P {Math.round(n.protein)} · C{' '}
-          {Math.round(n.carbs)} · F {Math.round(n.fat)}
+          {food.brand ? `${food.brand} · ` : ''}
+          {perServing ? perServing.label : 'per 100 g'}: {formatKcal(n.calories)} kcal · P {Math.round(n.protein)} · F{' '}
+          {Math.round(n.fat)} · C {Math.round(n.carbs)}
         </AppText>
       </View>
       {favorite ? <Ionicons name="heart" size={16} color={c.fat} accessibilityLabel="Favorite" /> : null}
@@ -377,6 +457,7 @@ function PortionStep({
   existing,
   initialPortion,
   onBack,
+  onEditCustomFood,
 }: {
   food: FoodItem;
   date: DateKey;
@@ -385,9 +466,15 @@ function PortionStep({
   /** Portion to start from (a favorite's saved portion, or the last portion logged for a recent food). */
   initialPortion: Portion | null;
   onBack?: () => void;
+  /** Opens the custom-food form for this food (when it's one of the user's custom foods). */
+  onEditCustomFood?: (food: CustomFood) => void;
 }) {
   const c = useColors();
   const store = useEntriesStore();
+  const { customFoods } = useCustomFoods();
+  const customFood = food.source === 'custom' ? customFoods.find((f) => f.id === food.sourceId) : undefined;
+  // Without a known weight, only servings make sense (grams/oz would use a made-up weight).
+  const weightKnown = hasKnownWeight(food);
   const today = useToday();
   const { profile } = useProfileState();
   const favoritesStore = useFavoritesStore();
@@ -412,8 +499,12 @@ function PortionStep({
 
   const choices: { choice: UnitChoice; label: string }[] = [
     ...food.servings.map((s) => ({ choice: { unit: 'serving', serving: s } as UnitChoice, label: s.label })),
-    { choice: { unit: 'g' }, label: 'grams' },
-    { choice: { unit: 'oz' }, label: 'oz' },
+    ...(weightKnown
+      ? [
+          { choice: { unit: 'g' } as UnitChoice, label: 'grams' },
+          { choice: { unit: 'oz' } as UnitChoice, label: 'oz' },
+        ]
+      : []),
   ];
 
   const quantity = parseNumber(qtyText);
@@ -526,6 +617,9 @@ function PortionStep({
               onPress={toggleFavorite}
             />
             {onBack ? <ActionButton icon="swap-horizontal" label="Change" onPress={onBack} /> : null}
+            {customFood && onEditCustomFood ? (
+              <ActionButton icon="create-outline" label="Edit food" onPress={() => onEditCustomFood(customFood)} />
+            ) : null}
             {existing ? <ActionButton icon="copy-outline" label="Log today" onPress={logAgainToday} /> : null}
             {existing ? <ActionButton icon="trash-outline" label="Delete" tone="danger" onPress={remove} /> : null}
           </View>
@@ -564,7 +658,9 @@ function PortionStep({
             />
           ))}
         </View>
-        {entry && choice.unit !== 'g' ? <AppText variant="small">= {Math.round(entry.grams)} g</AppText> : null}
+        {entry && choice.unit !== 'g' && weightKnown ? (
+          <AppText variant="small">= {Math.round(entry.grams)} g</AppText>
+        ) : null}
 
         <AppText variant="label">Meal</AppText>
         <Segmented
@@ -583,6 +679,7 @@ function PortionStep({
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: Space.sm, alignItems: 'flex-start' },
   flex: { flex: 1 },
+  noGrow: { flexGrow: 0, flexBasis: 'auto' },
   list: { gap: 0 },
   foodRow: {
     flexDirection: 'row',

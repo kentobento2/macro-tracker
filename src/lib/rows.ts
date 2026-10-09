@@ -4,6 +4,7 @@ import type { Database } from './database.types';
 import type { WeighIn } from './bodyweight';
 import { isDateKey } from './dates';
 import { isMeal, type FoodEntry } from './entries';
+import type { CustomFood } from './custom-foods';
 import type { Favorite } from './favorites';
 import type { FoodSource } from './foods';
 import type { ActivityLevel, Goal, Sex, Targets } from './targets';
@@ -39,8 +40,19 @@ const oneOf = <T extends string>(allowed: readonly T[], v: unknown): T | null =>
 function parseServings(v: unknown): Serving[] {
   if (!Array.isArray(v)) return [];
   return v.flatMap((s) =>
-    s && typeof s.label === 'string' && Number(s.grams) > 0 ? [{ label: s.label, grams: Number(s.grams) }] : []
+    s && typeof s.label === 'string' && Number(s.grams) > 0
+      ? [s.weightUnknown === true ? { label: s.label, grams: Number(s.grams), weightUnknown: true } : { label: s.label, grams: Number(s.grams) }]
+      : []
   );
+}
+
+/** The serving a row was logged with, carrying the weight-unknown flag from its servings list. */
+function rowServing(label: string | null, grams: number | null, servings: readonly Serving[]): Serving | null {
+  if (grams === null) return null;
+  const l = label ?? 'serving';
+  const g = Number(grams);
+  const match = servings.find((s) => s.label === l && s.grams === g);
+  return match?.weightUnknown ? { label: l, grams: g, weightUnknown: true } : { label: l, grams: g };
 }
 
 /** Returns null for rows that don't match the app's expectations (defensive; the DB has checks too). */
@@ -58,8 +70,7 @@ export function entryFromRow(r: EntryRow): FoodEntry | null {
     sourceId: r.source_id,
     quantity: Number(r.quantity),
     unit,
-    serving:
-      r.serving_grams !== null ? { label: r.serving_label ?? 'serving', grams: Number(r.serving_grams) } : null,
+    serving: rowServing(r.serving_label, r.serving_grams, parseServings(r.servings)),
     servings: parseServings(r.servings),
     grams: Number(r.grams),
     per100g: {
@@ -151,8 +162,7 @@ export function favoriteFromRow(r: FavoriteRow): Favorite | null {
   const source = oneOf(SOURCES, r.source);
   const unit = oneOf(UNITS, r.unit);
   if (!source || !unit) return null;
-  const serving =
-    r.serving_grams !== null ? { label: r.serving_label ?? 'serving', grams: Number(r.serving_grams) } : null;
+  const serving = rowServing(r.serving_label, r.serving_grams, parseServings(r.servings));
   if (unit === 'serving' && !serving) return null;
   return {
     key: r.food_key,
@@ -193,5 +203,40 @@ export function favoriteToRow(userId: string, f: Favorite): FavoriteInsert {
     serving_label: f.portion.serving?.label ?? null,
     serving_grams: f.portion.serving?.grams ?? null,
     updated_at: f.savedAt,
+  };
+}
+
+type CustomFoodRow = Database['public']['Tables']['custom_foods']['Row'];
+type CustomFoodInsert = Database['public']['Tables']['custom_foods']['Insert'];
+
+export function customFoodFromRow(r: CustomFoodRow): CustomFood | null {
+  if (!r.id || !r.name || !r.serving_label) return null;
+  return {
+    id: r.id,
+    name: r.name,
+    brand: r.brand,
+    servingLabel: r.serving_label,
+    servingGrams: numOrNull(r.serving_grams),
+    calories: numOrNull(r.kcal),
+    protein: Number(r.protein_g),
+    carbs: Number(r.carbs_g),
+    fat: Number(r.fat_g),
+    updatedAt: r.updated_at,
+  };
+}
+
+export function customFoodToRow(userId: string, f: CustomFood): CustomFoodInsert {
+  return {
+    id: f.id,
+    user_id: userId,
+    name: f.name,
+    brand: f.brand,
+    serving_label: f.servingLabel,
+    serving_grams: f.servingGrams,
+    kcal: f.calories,
+    protein_g: f.protein,
+    carbs_g: f.carbs,
+    fat_g: f.fat,
+    updated_at: f.updatedAt,
   };
 }

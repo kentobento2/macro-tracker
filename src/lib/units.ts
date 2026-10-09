@@ -9,7 +9,17 @@ export type PortionUnit = 'g' | 'oz' | 'serving';
 export type Serving = {
   label: string; // e.g. "1 banana", "1 cup"
   grams: number;
+  /**
+   * The real weight isn't known (a custom food like "1 restaurant bowl"): `grams` is a stand-in so the
+   * per-100 g math works, and must never be shown or used to convert to grams/ounces.
+   */
+  weightUnknown?: boolean;
 };
+
+/** False when a food's servings have no real weight, so it can only be logged in servings. */
+export function hasKnownWeight(food: { servings: readonly Serving[] }): boolean {
+  return !food.servings.some((s) => s.weightUnknown);
+}
 
 /** Weight in grams of a portion. `serving` is required when unit is 'serving'. */
 export function portionToGrams(quantity: number, unit: PortionUnit, serving?: Serving | null): number {

@@ -53,6 +53,17 @@ describe('resolvePortion', () => {
     expect(resolvePortion(egg, 2, 'slice').ok).toBe(false);
   });
 
+  it('only allows servings for a food with no known weight', () => {
+    const bowl = food('Poke bowl', [{ label: '1 bowl', grams: 100, weightUnknown: true }]);
+    expect(ok(resolvePortion(bowl, 2, 'bowls')).portion).toMatchObject({ quantity: 2, unit: 'serving' });
+    expect(ok(resolvePortion(bowl, 1, 'serving')).portion.quantity).toBe(1);
+    for (const unit of ['g', 'oz', 'ml']) {
+      const r = resolvePortion(bowl, 200, unit);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toMatch(/no known weight.*"1 bowl"/);
+    }
+  });
+
   it('converts mass units', () => {
     expect(ok(resolvePortion(banana, 150, 'g')).grams).toBe(150);
     expect(ok(resolvePortion(banana, 0.5, 'lb')).grams).toBeCloseTo(226.8);

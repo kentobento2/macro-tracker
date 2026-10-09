@@ -21,7 +21,8 @@ export function formatPortion(e: Pick<FoodEntry, 'quantity' | 'unit' | 'serving'
     case 'serving': {
       const label = e.serving?.label ?? 'serving';
       const prefix = e.quantity === 1 ? '' : `${formatQuantity(e.quantity)} × `;
-      return `${prefix}${label} (${Math.round(e.grams)} g)`;
+      // A serving with an unknown weight has only a stand-in gram value; don't show it.
+      return e.serving?.weightUnknown ? `${prefix}${label}` : `${prefix}${label} (${Math.round(e.grams)} g)`;
     }
   }
 }

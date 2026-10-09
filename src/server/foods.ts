@@ -9,6 +9,7 @@ import {
   UpstreamError,
   type FoodSourceConfig,
 } from '../../supabase/functions/_shared/food-sources';
+import { customFoodToItem, type CustomFood } from '../lib/custom-foods';
 import { addDays, type DateKey } from '../lib/dates';
 import { recentFoods } from '../lib/entries';
 import { dedupeFoods, foodKey, normalizeOffProduct, normalizeUsdaFood, type FoodItem } from '../lib/foods';
@@ -18,27 +19,36 @@ import type { UserStore } from './store';
 export type MatchSource = 'saved' | 'usda' | 'off';
 
 export const SOURCE_LABELS: Record<MatchSource, string> = {
-  saved: 'Saved (your favorites and recent foods)',
+  saved: 'Saved (your custom foods, favorites and recent foods)',
   usda: 'USDA FoodData Central',
   off: 'Open Food Facts (community data)',
 };
 
 export type SavedFoods = {
+  customFoods: CustomFood[];
   favorites: Favorite[];
   /** Distinct foods from recent logs, newest first, with the last entry for each. */
   recent: ReturnType<typeof recentFoods>;
-  /** Every saved food by foodKey: favorites win over recent snapshots. */
+  /** Every saved food by foodKey: a custom food's current definition wins, then favorites, then recent snapshots. */
   byKey: Map<string, FoodItem>;
 };
 
-/** Favorites plus foods logged in the last 90 days. */
+/** Custom foods, favorites, and foods logged in the last 90 days. */
 export async function loadSavedFoods(store: UserStore, today: DateKey): Promise<SavedFoods> {
-  const [favorites, entries] = await Promise.all([store.favorites(), store.entriesBetween(addDays(today, -90), today)]);
+  const [customFoods, favorites, entries] = await Promise.all([
+    store.customFoods(),
+    store.favorites(),
+    store.entriesBetween(addDays(today, -90), today),
+  ]);
   const recent = recentFoods(entries, 200);
   const byKey = new Map<string, FoodItem>();
   for (const r of recent) byKey.set(foodKey(r.food), r.food);
   for (const f of favorites) byKey.set(f.key, f.food);
-  return { favorites, recent, byKey };
+  for (const c of customFoods) {
+    const item = customFoodToItem(c);
+    byKey.set(foodKey(item), item);
+  }
+  return { customFoods, favorites, recent, byKey };
 }
 
 export type ExternalResults = { usda: FoodItem[]; off: FoodItem[]; problems: string[] };

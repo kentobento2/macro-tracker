@@ -3,7 +3,7 @@
 Mobile-first PWA for tracking calories and macros. Two people, each with their own Google login and private log.
 
 - **Log:** any day (arrows, Today, or a month calendar with dots on logged days), breakfast, lunch, dinner and snacks with totals vs targets, plus the week’s average
-- **Add food:** favorites and recent foods (portion pre-filled), search USDA FoodData Central (whole foods and branded products) and Open Food Facts (community data), scan a barcode (Open Food Facts), log in grams, ounces or servings
+- **Add food:** your own custom foods (nutrition per serving from a label or menu; weight optional), favorites and recent foods (portion pre-filled), search USDA FoodData Central (whole foods and branded products) and Open Food Facts (community data), scan a barcode (Open Food Facts), log in grams, ounces or servings
 - **Weight:** one weigh-in per day (lb or kg), this week’s average and change vs the last week with data, a chart of weigh-ins with a 7-day rolling average (1W–All), history grouped by week
 - **Settings:** targets calculated from your stats (Mifflin-St Jeor), or entered by hand
 - **Assistants:** log meals and weigh-ins by chatting with Claude or Meta Muse through a remote MCP server (`/api/mcp`). See [docs/mcp.md](docs/mcp.md).
