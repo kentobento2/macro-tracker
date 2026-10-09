@@ -1,15 +1,20 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AppText, Banner, Button, Screen } from '@/components/ui';
 import { Space, useColors } from '@/constants/theme';
-import { signInWithGoogle } from '@/data/auth';
+import { getSignInRedirectError, signInWithGoogle } from '@/data/auth';
+
+const noopSubscribe = () => () => {};
 
 export default function SignInScreen() {
   const c = useColors();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Server render has no URL; read the redirect error on the client only (avoids a hydration mismatch).
+  const redirectError = useSyncExternalStore(noopSubscribe, getSignInRedirectError, () => null);
+  const [clickError, setError] = useState<string | null>(null);
+  const error = clickError ?? (loading ? null : redirectError);
 
   const onPress = async () => {
     setLoading(true);

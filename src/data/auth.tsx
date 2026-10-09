@@ -23,6 +23,24 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
 export const useAuth = () => useContext(AuthContext);
 
+// If sign-in fails, Supabase redirects back with ?error_description=... (or in the #hash).
+// Capture it once at startup, before the router rewrites the URL.
+const redirectError: string | null = (() => {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
+  const query = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.slice(1));
+  const description = query.get('error_description') ?? hash.get('error_description');
+  if (!description) return null;
+  // The email allowlist trigger makes account creation fail with this generic message.
+  return /database error saving new user/i.test(description)
+    ? 'This app is invite-only. Sign in with an invited Google account.'
+    : description;
+})();
+
+export function getSignInRedirectError() {
+  return redirectError;
+}
+
 export async function signInWithGoogle() {
   if (Platform.OS !== 'web') {
     throw new Error('Google sign-in is only set up for the web app.');
