@@ -9,7 +9,10 @@ export type FakeDb = {
   tables: Record<string, Row[]>;
   /** OAuth access token -> user id, for auth.getUser. */
   sessions: Record<string, string>;
-  rateLimitAllows: boolean;
+  /** false = over the limit; "error" = the limiter itself fails. */
+  rateLimitAllows: boolean | 'error';
+  /** How many times auth.getUser was called (to check junk tokens never reach Supabase Auth). */
+  getUserCalls: number;
 };
 
 let seq = 0;
@@ -141,16 +144,20 @@ class Query {
 }
 
 export function createFakeDb(initial: Partial<FakeDb> = {}): FakeDb {
-  return { tables: {}, sessions: {}, rateLimitAllows: true, ...initial };
+  return { tables: {}, sessions: {}, rateLimitAllows: true, getUserCalls: 0, ...initial };
 }
 
 /** A supabase-js-shaped client over a FakeDb. Cast to Db at the call site. */
 export function fakeClient(db: FakeDb) {
   return {
     from: (table: string) => new Query(db, table),
-    rpc: async (_fn: string, _args: unknown) => ({ data: db.rateLimitAllows, error: null }),
+    rpc: async (_fn: string, _args: unknown) =>
+      db.rateLimitAllows === 'error'
+        ? { data: null, error: { code: 'PGRST000', message: 'unavailable' } }
+        : { data: db.rateLimitAllows, error: null },
     auth: {
       getUser: async (token: string) => {
+        db.getUserCalls++;
         const id = db.sessions[token];
         return id ? { data: { user: { id } }, error: null } : { data: { user: null }, error: { message: 'invalid token' } };
       },

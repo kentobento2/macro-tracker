@@ -55,11 +55,28 @@ export type UsdaFood = {
   foodMeasures?: { disseminationText?: string; gramWeight?: number }[];
 };
 
+/** Longest food name / serving label kept from a source; longer text is cut with "…". */
+export const MAX_NAME_LENGTH = 120;
+export const MAX_SERVING_LABEL_LENGTH = 80;
+
+// Control characters, zero-width characters and bidirectional overrides: invisible text that can hide or
+// reorder what the user (or an AI assistant reading the name) actually sees.
+const INVISIBLE = /[\u0000-\u001F\u007F-\u009F\u00AD\u200B-\u200F\u2028-\u202E\u2060-\u2069\uFEFF]/g;
+
+/**
+ * Text from food databases (crowd-sourced for Open Food Facts) is untrusted: strip invisible characters,
+ * collapse whitespace, and cap the length.
+ */
+export function cleanText(s: string, max: number): string {
+  const t = s.replace(INVISIBLE, ' ').replace(/\s+/g, ' ').trim();
+  return t.length <= max ? t : `${t.slice(0, max - 1).trimEnd()}…`;
+}
+
 /** Some sources shout ("GREEK NONFAT YOGURT"); turn all-caps names into title case. Mixed case is left alone. */
 export function tidyName(name: string): string {
   // Also close stray gaps after hyphens that appear in USDA data ("Low- Fat" -> "Low-Fat"), and drop
   // comma-separated parts that repeat the one before ("Chips, Salt & Vinegar, Salt & Vinegar", "Bar, Bar").
-  const parts = name.trim().replace(/\s+/g, ' ').replace(/(\w)- (\w)/g, '$1-$2').split(/\s*,\s*/);
+  const parts = cleanText(name, MAX_NAME_LENGTH).replace(/(\w)- (\w)/g, '$1-$2').split(/\s*,\s*/);
   const t = parts.filter((p, i) => i === 0 || p.toLowerCase() !== parts[i - 1].toLowerCase()).join(', ');
   if (!/[A-Z]/.test(t) || t !== t.toUpperCase()) return t;
   return t.toLowerCase().replace(/(^|[\s(\-/&,])([a-z])/g, (_m, sep: string, ch: string) => sep + ch.toUpperCase());
@@ -98,7 +115,8 @@ export function normalizeUsdaFood(f: UsdaFood): FoodItem | null {
   // Branded: the label serving, e.g. "1 cup (227 g)" or "1 serving (150 g)".
   const servingGrams = num(f.servingSize);
   if (servingGrams && GRAM_UNITS.has((f.servingSizeUnit ?? '').toUpperCase())) {
-    const rawHousehold = (f.householdServingFullText ?? '').trim().replace(/\s+/g, ' ');
+    // Leave room for the " (123.4 g)" this label may get.
+    const rawHousehold = cleanText(f.householdServingFullText ?? '', MAX_SERVING_LABEL_LENGTH - 12);
     const household = rawHousehold === rawHousehold.toUpperCase() ? rawHousehold.toLowerCase() : rawHousehold;
     const amount = `${Math.round(servingGrams * 10) / 10} g`;
     // Household text without a quantity ("Frosted Cheerios") isn't a serving description; text that already
@@ -113,7 +131,7 @@ export function normalizeUsdaFood(f: UsdaFood): FoodItem | null {
   }
   for (const m of f.foodMeasures ?? []) {
     const grams = num(m.gramWeight);
-    const label = m.disseminationText?.trim();
+    const label = cleanText(m.disseminationText ?? '', MAX_SERVING_LABEL_LENGTH);
     if (!grams || !label || label.toLowerCase() === 'quantity not specified' || seen.has(label)) continue;
     seen.add(label);
     servings.push({ label, grams });
@@ -164,10 +182,10 @@ export function normalizeOffProduct(p: OffProduct, fallbackCode: string): FoodIt
   const servingGrams = num(p.serving_quantity);
   const servingUnit = (p.serving_quantity_unit ?? 'g').toLowerCase();
   if (servingGrams && (servingUnit === 'g' || servingUnit === 'ml')) {
-    servings.push({ label: p.serving_size?.trim() || `1 serving (${servingGrams} g)`, grams: servingGrams });
+    servings.push({ label: cleanText(p.serving_size ?? '', MAX_SERVING_LABEL_LENGTH) || `1 serving (${servingGrams} g)`, grams: servingGrams });
   }
 
-  const brand = p.brands?.split(',')[0]?.trim() || null;
+  const brand = tidyName(p.brands?.split(',')[0] ?? '') || null;
   return {
     source: 'off',
     sourceId: p.code ?? fallbackCode,

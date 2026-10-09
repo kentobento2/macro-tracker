@@ -16,6 +16,21 @@ export function isApiToken(s: string): boolean {
   return /^mt_[A-Za-z0-9_-]{43}$/.test(s);
 }
 
+/** Tokens stop working this long after they're created; the user makes a new one. Limits a leaked token's life. */
+export const API_TOKEN_TTL_DAYS = 90;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** When a token created at `createdAt` (ISO timestamp) expires. */
+export function apiTokenExpiresAt(createdAt: string): Date {
+  return new Date(Date.parse(createdAt) + API_TOKEN_TTL_DAYS * DAY_MS);
+}
+
+/** True once the token is past its expiry, or if its creation time can't be read (fail closed). */
+export function isApiTokenExpired(createdAt: string, now: Date): boolean {
+  const expires = apiTokenExpiresAt(createdAt).getTime();
+  return Number.isNaN(expires) || now.getTime() >= expires;
+}
+
 /** What the app shows to identify a token after creation, e.g. "mt_Ab3x…". */
 export function apiTokenDisplayPrefix(token: string): string {
   return token.slice(0, 7);

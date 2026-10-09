@@ -1,4 +1,13 @@
-import { dedupeFoods, isPlausiblePer100g, normalizeOffProduct, normalizeUsdaFood, tidyName } from '../foods';
+import {
+  cleanText,
+  dedupeFoods,
+  isPlausiblePer100g,
+  MAX_NAME_LENGTH,
+  MAX_SERVING_LABEL_LENGTH,
+  normalizeOffProduct,
+  normalizeUsdaFood,
+  tidyName,
+} from '../foods';
 
 describe('normalizeUsdaFood', () => {
   // Trimmed from a real FoodData Central search result (Survey FNDDS 2709224).
@@ -168,6 +177,37 @@ describe('normalizeUsdaFood (branded)', () => {
 
   it('skips branded records with no nutrition data', () => {
     expect(normalizeUsdaFood({ ...yogurt, foodNutrients: [] })).toBeNull();
+  });
+});
+
+describe('cleanText (untrusted database text)', () => {
+  it('strips control, zero-width and bidi-override characters and collapses whitespace', () => {
+    expect(cleanText('Oat\u200Bmeal\u0007 \u202Eevil\u202C\n\tbar', 50)).toBe('Oat meal evil bar');
+  });
+
+  it('caps the length with an ellipsis', () => {
+    const long = 'Protein bar '.repeat(20);
+    const out = cleanText(long, MAX_NAME_LENGTH);
+    expect(out.length).toBeLessThanOrEqual(MAX_NAME_LENGTH);
+    expect(out.endsWith('…')).toBe(true);
+  });
+
+  it('is applied to names, brands and serving labels from Open Food Facts', () => {
+    const f = normalizeOffProduct(
+      {
+        product_name: `Granola\u200B ${'x'.repeat(300)}`,
+        brands: 'ACME\u202E, Other',
+        serving_size: `1 cup\u0000 ${'y'.repeat(200)}`,
+        serving_quantity: 40,
+        nutriments: { 'energy-kcal_100g': 450, proteins_100g: 10, carbohydrates_100g: 60, fat_100g: 18 },
+      },
+      '1234567890123'
+    )!;
+    expect(f.name.length).toBeLessThanOrEqual(MAX_NAME_LENGTH);
+    expect(f.name).not.toMatch(/\u200B/);
+    expect(f.brand).toBe('Acme');
+    expect(f.servings[0].label.length).toBeLessThanOrEqual(MAX_SERVING_LABEL_LENGTH);
+    expect(f.servings[0].label).not.toMatch(/\u0000/);
   });
 });
 

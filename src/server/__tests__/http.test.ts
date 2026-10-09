@@ -8,6 +8,8 @@ import { createFakeDb, fakeClient, type FakeDb } from '../testing/fake-supabase'
 const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const URL_ = 'https://macro.example/api/mcp';
 const TOKEN = formatApiToken(new Uint8Array(32).fill(7));
+// Shaped like a JWT; the fake Supabase Auth maps it to user A.
+const OAUTH_A = 'eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiJhIn0.c2lnbmF0dXJl';
 
 let db: FakeDb;
 const noFoods: FoodLookup = {
@@ -45,10 +47,10 @@ afterAll(() => jest.restoreAllMocks());
 beforeEach(async () => {
   db = createFakeDb({
     tables: {
-      api_tokens: [{ id: 't1', user_id: A, name: 'Muse', token_hash: await sha256Hex(TOKEN), token_prefix: 'mt_BwcH', revoked_at: null, last_used_at: null }],
+      api_tokens: [{ id: 't1', user_id: A, name: 'Muse', token_hash: await sha256Hex(TOKEN), token_prefix: 'mt_BwcH', created_at: new Date().toISOString(), revoked_at: null, last_used_at: null }],
       profiles: [{ id: A, unit_system: 'imperial', timezone: 'Pacific/Honolulu', target_calories: 2000, target_protein_g: 150, target_carbs_g: 200, target_fat_g: 67 }],
     },
-    sessions: { 'oauth-access-token-for-a': A },
+    sessions: { [OAUTH_A]: A },
   });
 });
 
@@ -93,9 +95,28 @@ describe('MCP over HTTP', () => {
   });
 
   it('accepts Supabase OAuth access tokens', async () => {
-    const res = await rpc('tools/call', { name: 'get_daily_summary', arguments: {} }, 'Bearer oauth-access-token-for-a');
+    const res = await rpc('tools/call', { name: 'get_daily_summary', arguments: {} }, `Bearer ${OAUTH_A}`);
     expect(res.status).toBe(200);
     expect((await res.json()).result.isError).toBeFalsy();
+  });
+
+  it('rejects API tokens past their 90-day lifetime', async () => {
+    db.tables.api_tokens[0].created_at = new Date(Date.now() - 91 * 24 * 3600 * 1000).toISOString();
+    expect((await rpc('tools/list', {})).status).toBe(401);
+  });
+
+  it('rejects junk bearer values without calling Supabase Auth', async () => {
+    for (const junk of ['Bearer hello', `Bearer ${'a'.repeat(5000)}.b.c`, 'Bearer a.b', 'Basic abc']) {
+      expect((await rpc('tools/list', {}, junk)).status).toBe(401);
+    }
+    expect(db.getUserCalls).toBe(0);
+  });
+
+  it('refuses requests when the rate limiter is unavailable (fails closed)', async () => {
+    db.rateLimitAllows = 'error';
+    const res = await rpc('tools/call', { name: 'get_daily_summary', arguments: {} });
+    expect(res.status).toBe(503);
+    expect(res.headers.get('Retry-After')).toBe('60');
   });
 
   it('returns invalid arguments as a tool error, not a crash', async () => {

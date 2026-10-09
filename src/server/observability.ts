@@ -8,14 +8,19 @@ import type { Db } from './store';
 /** Requests per user per minute. Generous for chat use; stops runaway loops. */
 export const RATE_LIMIT_PER_MINUTE = 60;
 
-/** True if the request is allowed. Fails open if the limiter itself is unavailable (logged). */
-export async function allowRequest(db: Db, userId: string): Promise<boolean> {
+export type RateDecision = 'allowed' | 'limited' | 'unavailable';
+
+/**
+ * Counts the request against the user's per-minute limit. Fails closed: if the limiter can't be reached
+ * (logged), the request is refused, since the database the tools need is most likely down too.
+ */
+export async function checkRateLimit(db: Db, userId: string): Promise<RateDecision> {
   const { data, error } = await db.rpc('mcp_rate_hit', { p_user_id: userId, p_limit: RATE_LIMIT_PER_MINUTE });
   if (error) {
     log({ event: 'rate_limiter_error', code: error.code });
-    return true;
+    return 'unavailable';
   }
-  return data === true;
+  return data === true ? 'allowed' : 'limited';
 }
 
 /** Stable, non-reversible short id so logs can be correlated per user without storing who they are. */

@@ -10,7 +10,7 @@ A remote MCP server that lets Claude and Meta Muse log meals and weigh-ins into 
   
   The server derives the user from the token. No tool accepts a user id, and every database query is filtered to that user.
 - **Timezone:** "today" for assistants uses `profiles.timezone` (default `Pacific/Honolulu`).
-- **Limits:** 60 requests per minute per user. Logs record the tool name, status, timing and a hashed user fingerprint, never food text or tokens.
+- **Limits:** 60 requests per minute per user (if the limiter itself is unreachable, requests are refused with 503 rather than let through). Logs record the tool name, status, timing and a hashed user fingerprint, never food text or tokens.
 
 ## Tools
 
@@ -55,7 +55,7 @@ Each person connects with their own Google account. To disconnect, remove the co
 2. In Muse, ask it to add a custom MCP connector with URL `https://macro-tracker-rho-two.vercel.app/api/mcp` and **Bearer token** authentication. Paste the token only into the secure credential prompt, never into the chat itself.
 3. Try: *"Log a banana as a snack."*
 
-If a token leaks or you stop using it, tap **Revoke** in Settings. It stops working immediately.
+If a token leaks or you stop using it, tap **Revoke** in Settings. It stops working immediately. Tokens also expire 90 days after they are created; Settings shows the date. When one expires, create a new token and update it in Muse.
 
 ## Test with MCP Inspector
 Get a token: create an API token in Settings, or use your own.

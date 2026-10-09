@@ -7,7 +7,13 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { MIN_TOUCH, Radius, Space, useColors } from '@/constants/theme';
 import { useOnline } from '@/data/data-provider';
-import { apiTokenDisplayPrefix, formatApiToken } from '@/lib/api-tokens';
+import {
+  API_TOKEN_TTL_DAYS,
+  apiTokenDisplayPrefix,
+  apiTokenExpiresAt,
+  formatApiToken,
+  isApiTokenExpired,
+} from '@/lib/api-tokens';
 import { supabase } from '@/lib/supabase';
 
 import { AppText, Banner, Button, Card, Field } from './ui';
@@ -111,7 +117,10 @@ export function ApiTokensCard() {
       {created ? (
         <View style={[styles.reveal, { borderColor: c.primary, backgroundColor: c.primarySoft }]}>
           <AppText variant="label">Your new token for {created.name}</AppText>
-          <AppText variant="small">Copy it now. It won&apos;t be shown again. Treat it like a password.</AppText>
+          <AppText variant="small">
+            Copy it now. It won&apos;t be shown again. Treat it like a password. It stops working after{' '}
+            {API_TOKEN_TTL_DAYS} days.
+          </AppText>
           <Text selectable style={[styles.token, { color: c.text, backgroundColor: c.card, borderColor: c.border }]}>
             {created.token}
           </Text>
@@ -136,9 +145,15 @@ export function ApiTokensCard() {
               <View style={styles.flex}>
                 <AppText>{t.name}</AppText>
                 <AppText variant="small">
-                  {t.token_prefix}… · created {shortDate(t.created_at)} ·{' '}
-                  {t.last_used_at ? `last used ${shortDate(t.last_used_at)}` : 'never used'}
+                  {t.token_prefix}… · {t.last_used_at ? `last used ${shortDate(t.last_used_at)}` : 'never used'}
                 </AppText>
+                {isApiTokenExpired(t.created_at, new Date()) ? (
+                  <AppText variant="small" style={{ color: c.danger }}>
+                    Expired. Create a new token for this assistant.
+                  </AppText>
+                ) : (
+                  <AppText variant="small">Expires {shortDate(apiTokenExpiresAt(t.created_at).toISOString())}</AppText>
+                )}
               </View>
               <Pressable
                 accessibilityRole="button"

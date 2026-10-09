@@ -20,6 +20,14 @@ Expo (TypeScript, Expo Router) app shipped primarily as a mobile-first PWA on we
 - Security is enforced with Row Level Security in Supabase, not by hiding the anon key. The GitHub repo is public.
 - Before committing, check `git status` / `git diff --staged` for keys or tokens.
 
+### Security headers and untrusted text
+- `vercel.json` sends a strict Content-Security-Policy (plus `frame-ancestors 'none'`, nosniff, Referrer-Policy, Permissions-Policy). Expo's one inline script is allowed **by hash**; `scripts/check-csp.mjs` (run in CI after `build:web`) fails if a build produces an inline script the CSP doesn't allow. New third-party origins (APIs, fonts, images) must be added to the CSP deliberately.
+- Never weaken `frame-ancestors`: the OAuth consent page must not be frameable (clickjacking).
+- Text from food databases is untrusted (Open Food Facts is crowd-sourced) and is read by AI assistants: it goes through `cleanText`/`tidyName` in `foods.ts` (invisible characters stripped, length capped), and MCP tool output must stay data, never instructions.
+- Keep source files free of literal invisible/bidi characters; write them as `\uXXXX` escapes.
+- MCP auth fails closed: API tokens expire after 90 days (`api-tokens.ts`), non-JWT bearer values are rejected before calling Supabase Auth, and an unreachable rate limiter returns 503.
+- CI (`.github/workflows/ci.yml`) runs tests, typecheck, lint, a production `npm audit` and the CSP check on every push and PR.
+
 ### Mobile-first UI
 - Design for a ~375px-wide phone screen first; larger screens get a centered column (max ~520px), not a desktop layout.
 - Touch targets at least 44×44pt; primary actions reachable with a thumb.
