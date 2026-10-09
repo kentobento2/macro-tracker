@@ -19,6 +19,7 @@ export function WeekSummary({ date, today }: { date: DateKey; today: DateKey }) 
       title={`${label} · daily average · ${daysLogged} of ${elapsed.length} days logged`}
       consumed={average}
       targets={profile?.targets ?? null}
+      bars={false}
     />
   );
 }

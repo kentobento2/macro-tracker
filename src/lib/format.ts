@@ -3,7 +3,7 @@
 import type { FoodEntry } from './entries';
 import { KG_PER_POUND } from './units';
 
-export const formatKcal = (kcal: number) => `${Math.round(kcal)}`;
+export const formatKcal = (kcal: number) => Math.round(kcal).toLocaleString('en-US');
 export const formatGrams = (g: number) => `${Math.round(g)}g`;
 
 /** Trim trailing zeros: 1.50 -> "1.5", 2.00 -> "2". */

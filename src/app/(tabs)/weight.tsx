@@ -5,7 +5,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { WeightCalendarSheet } from '@/components/calendar-sheet';
 import { SyncBanner } from '@/components/sync-banner';
 import { WeightChart } from '@/components/weight-chart';
-import { AppText, Banner, Button, Card, Field, Screen, Segmented } from '@/components/ui';
+import { AppText, Banner, Button, Card, Field, Pill, Screen, Segmented, StatColumn } from '@/components/ui';
 import { MIN_TOUCH, Radius, Space, useColors } from '@/constants/theme';
 import { useProfileState, useToday, useWeighIns, useWeightStore } from '@/data/data-provider';
 import {
@@ -88,8 +88,14 @@ export default function WeightScreen() {
         {current ? (
           <>
             <View style={styles.bigRow}>
-              <AppText style={styles.big}>{formatWeightNumber(current.averageKg, unit)}</AppText>
-              <AppText variant="muted">{weightUnitLabel(unit)} average</AppText>
+              <StatColumn
+                size="lg"
+                align="start"
+                value={formatWeightNumber(current.averageKg, unit)}
+                label={`${weightUnitLabel(unit)} weekly average`}
+                color={c.primary}
+              />
+              {changeKg !== null ? <Pill text={formatWeightChange(changeKg, unit)} color={c.primary} /> : null}
             </View>
             <AppText variant="small">
               {current.count} weigh-in{current.count === 1 ? '' : 's'} · {formatWeekRange(current.weekStart)}
@@ -105,9 +111,8 @@ export default function WeightScreen() {
               size={18}
               color={c.muted}
             />
-            <AppText variant="body">
-              {formatWeightChange(changeKg, unit)}{' '}
-              <AppText variant="small">vs {formatWeekRange(previous.weekStart)}</AppText>
+            <AppText variant="small">
+              Change vs {formatWeekRange(previous.weekStart)} ({formatWeight(previous.averageKg, unit)} avg)
             </AppText>
           </View>
         ) : previous ? (
@@ -248,8 +253,7 @@ export default function WeightScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  bigRow: { flexDirection: 'row', alignItems: 'baseline', gap: Space.sm },
-  big: { fontSize: 40, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  bigRow: { flexDirection: 'row', alignItems: 'center', gap: Space.sm },
   changeRow: { flexDirection: 'row', alignItems: 'center', gap: Space.xs },
   dateRow: {
     flexDirection: 'row',

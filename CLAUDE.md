@@ -25,6 +25,8 @@ Expo (TypeScript, Expo Router) app shipped primarily as a mobile-first PWA on we
 - Touch targets at least 44×44pt; primary actions reachable with a thumb.
 - Inputs use 16px text so iOS Safari doesn't zoom on focus.
 - Respect safe areas (`react-native-safe-area-context`), support light and dark mode (colors in `src/constants/theme.ts`).
+- Visual language: light background, white rounded cards, big bold primary number with macros beside it (small colored % pill above each), progress rings for "Impact on Targets", value-vs-target bars with a marker, icon-and-label action rows, pill toggles, dark primary button. Build with the primitives in `src/components/ui.tsx` (`StatColumn`, `Pill`, `ProgressRing`, `TargetBar`, `ActionButton`, `Segmented`, `Chip`, `Button`).
+- One color per nutrient everywhere (`calories`, `protein`, `fat`, `carbs` in the theme). Show macros in the order protein, fat, carbs.
 - Use React Native primitives so screens work on web and native; keep web-only code in `.web.tsx` files or behind `Platform.OS === 'web'`.
 - Must work on iPhone Safari and Android Chrome, including installed to the home screen. Check changes at phone width (`npm run web`, devtools device mode).
 

@@ -67,8 +67,8 @@ function MealSection({
           onPress={add}
           accessibilityRole="button"
           accessibilityLabel={`Add food to ${MEAL_LABELS[meal]}`}
-          style={({ pressed }) => [styles.addBtn, { backgroundColor: c.primarySoft, opacity: pressed ? 0.7 : 1 }]}>
-          <Ionicons name="add" size={24} color={c.primary} />
+          style={({ pressed }) => [styles.addBtn, { backgroundColor: c.track, opacity: pressed ? 0.7 : 1 }]}>
+          <Ionicons name="add" size={24} color={c.text} />
         </Pressable>
       </View>
       {entries.map((e) => (
@@ -93,7 +93,10 @@ function EntryRow({ entry }: { entry: FoodEntry }) {
         style={({ pressed }) => [styles.rowMain, { opacity: pressed ? 0.6 : 1 }]}>
         <AppText numberOfLines={1}>{entry.foodName}</AppText>
         <AppText variant="small" numberOfLines={1}>
-          {formatPortion(entry)} · P {Math.round(n.protein)} · C {Math.round(n.carbs)} · F {Math.round(n.fat)}
+          {formatPortion(entry)} ·{' '}
+          <AppText variant="small" style={{ color: c.protein }}>P {Math.round(n.protein)}</AppText>{' '}
+          <AppText variant="small" style={{ color: c.fat }}>F {Math.round(n.fat)}</AppText>{' '}
+          <AppText variant="small" style={{ color: c.carbs }}>C {Math.round(n.carbs)}</AppText>
         </AppText>
       </Pressable>
       <AppText variant="label" style={styles.rowKcal}>

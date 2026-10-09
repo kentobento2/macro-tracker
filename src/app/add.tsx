@@ -5,9 +5,22 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { BarcodeScanner } from '@/components/barcode-scanner';
-import { AppText, Banner, Button, Card, Chip, Field, Screen, Segmented } from '@/components/ui';
+import {
+  ActionButton,
+  AppText,
+  Banner,
+  Button,
+  Card,
+  Chip,
+  Field,
+  ProgressRing,
+  Screen,
+  SectionTitle,
+  Segmented,
+  StatColumn,
+} from '@/components/ui';
 import { MIN_TOUCH, Space, useColors } from '@/constants/theme';
-import { useEntriesStore, useEntry, useOnline, useRecentFoods, useToday } from '@/data/data-provider';
+import { useEntriesStore, useEntry, useOnline, useProfileState, useRecentFoods, useToday } from '@/data/data-provider';
 import { FoodLookupError, lookupBarcode, searchFoods } from '@/data/food-api';
 import { isDateKey, type DateKey } from '@/lib/dates';
 import {
@@ -22,6 +35,7 @@ import {
   type Meal,
 } from '@/lib/entries';
 import { formatKcal } from '@/lib/format';
+import { macroCaloriePercents, percentOfTarget } from '@/lib/macros';
 import type { FoodItem, FoodSource } from '@/lib/foods';
 import { parseNumber } from '@/lib/settings-form';
 import { gramsToQuantity, portionToGrams, type PortionUnit, type Serving } from '@/lib/units';
@@ -267,6 +281,8 @@ function PortionStep({
 }) {
   const c = useColors();
   const store = useEntriesStore();
+  const today = useToday();
+  const { profile } = useProfileState();
 
   const [choice, setChoice] = useState<UnitChoice>(() => {
     if (existing) {
@@ -337,18 +353,68 @@ function PortionStep({
     close();
   };
 
+  /** Log the same food and portion again as a new entry today (keeps the original). */
+  const logAgainToday = () => {
+    if (!entry) return;
+    store.save({ ...entry, id: Crypto.randomUUID(), date: today, createdAt: new Date().toISOString() });
+    close();
+  };
+
+  // Share of calories from each macro is a property of the food, so it doesn't change with portion size.
+  const split = macroCaloriePercents(food.per100g);
+  const targets = profile?.targets ?? null;
+  const fmt1 = (v: number | undefined) => (v === undefined ? '–' : v.toFixed(1));
+
   return (
     <>
       <Card>
-        <AppText variant="heading">{food.name}</AppText>
-        <AppText variant="small">
-          {food.brand ? `${food.brand} · ` : ''}
-          {SOURCE_LABELS[food.source]}
-        </AppText>
+        <View>
+          <AppText variant="heading">{food.name}</AppText>
+          <AppText variant="small">
+            {food.brand ? `${food.brand} · ` : ''}
+            {SOURCE_LABELS[food.source]}
+          </AppText>
+        </View>
+
+        <View style={styles.stats}>
+          <View style={styles.statCalories}>
+            <StatColumn
+              size="lg"
+              align="start"
+              value={n ? formatKcal(n.calories) : '–'}
+              label="Calories"
+              color={c.calories}
+            />
+          </View>
+          <StatColumn value={fmt1(n?.protein)} label="Protein" pill={`${split.protein}%`} color={c.protein} />
+          <StatColumn value={fmt1(n?.fat)} label="Fat" pill={`${split.fat}%`} color={c.fat} />
+          <StatColumn value={fmt1(n?.carbs)} label="Carbs" pill={`${split.carbs}%`} color={c.carbs} />
+        </View>
         {food.caloriesDerived ? (
           <AppText variant="small">Calories weren’t listed, so they’re calculated from the macros.</AppText>
         ) : null}
-        {onBack ? <Button title="Choose a different food" variant="ghost" onPress={onBack} /> : null}
+
+        {onBack || existing ? (
+          <View style={[styles.actions, { borderTopColor: c.border }]}>
+            {onBack ? <ActionButton icon="swap-horizontal" label="Change" onPress={onBack} /> : null}
+            {existing ? <ActionButton icon="copy-outline" label="Log today" onPress={logAgainToday} /> : null}
+            {existing ? <ActionButton icon="trash-outline" label="Delete" tone="danger" onPress={remove} /> : null}
+          </View>
+        ) : null}
+      </Card>
+
+      <Card>
+        <SectionTitle>Impact on Targets</SectionTitle>
+        {targets ? (
+          <View style={styles.rings}>
+            <ProgressRing percent={percentOfTarget(n?.calories ?? 0, targets.calories)} label="Calories" color={c.calories} />
+            <ProgressRing percent={percentOfTarget(n?.protein ?? 0, targets.protein)} label="Protein" color={c.protein} />
+            <ProgressRing percent={percentOfTarget(n?.fat ?? 0, targets.fat)} label="Fat" color={c.fat} />
+            <ProgressRing percent={percentOfTarget(n?.carbs ?? 0, targets.carbs)} label="Carbs" color={c.carbs} />
+          </View>
+        ) : (
+          <AppText variant="small">Set your daily targets in Settings to see how this fits.</AppText>
+        )}
       </Card>
 
       <Card>
@@ -360,8 +426,7 @@ function PortionStep({
           selectTextOnFocus
           error={quantity === null || quantity <= 0 ? 'Enter an amount greater than 0' : null}
         />
-        <AppText variant="label">Unit</AppText>
-        <View accessibilityRole="radiogroup" style={styles.chips}>
+        <View accessibilityRole="radiogroup" accessibilityLabel="Unit" style={styles.chips}>
           {choices.map(({ choice: ch, label }) => (
             <Chip
               key={choiceKey(ch)}
@@ -371,6 +436,7 @@ function PortionStep({
             />
           ))}
         </View>
+        {entry && choice.unit !== 'g' ? <AppText variant="small">= {Math.round(entry.grams)} g</AppText> : null}
 
         <AppText variant="label">Meal</AppText>
         <Segmented
@@ -381,35 +447,8 @@ function PortionStep({
         />
       </Card>
 
-      <Card>
-        <View style={styles.totals}>
-          <View>
-            <AppText style={styles.bigKcal}>{n ? formatKcal(n.calories) : '–'}</AppText>
-            <AppText variant="muted">kcal{entry ? ` · ${Math.round(entry.grams)} g` : ''}</AppText>
-          </View>
-          <View style={styles.macroCol}>
-            <Macro label="Protein" value={n?.protein} color={c.protein} />
-            <Macro label="Carbs" value={n?.carbs} color={c.carbs} />
-            <Macro label="Fat" value={n?.fat} color={c.fat} />
-          </View>
-        </View>
-      </Card>
-
       <Button title={existing ? 'Save changes' : 'Add to log'} onPress={save} disabled={!entry} />
-      {existing ? <Button title="Delete entry" variant="danger" onPress={remove} /> : null}
     </>
-  );
-}
-
-function Macro({ label, value, color }: { label: string; value: number | undefined; color: string }) {
-  return (
-    <View style={styles.macro}>
-      <View style={[styles.dot, { backgroundColor: color }]} />
-      <AppText variant="small" style={styles.flex}>
-        {label}
-      </AppText>
-      <AppText variant="label">{value === undefined ? '–' : `${Math.round(value)}g`}</AppText>
-    </View>
   );
 }
 
@@ -426,9 +465,13 @@ const styles = StyleSheet.create({
     minHeight: MIN_TOUCH + 12,
   },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Space.sm },
-  totals: { flexDirection: 'row', alignItems: 'center', gap: Space.xl },
-  bigKcal: { fontSize: 34, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  macroCol: { flex: 1, gap: Space.xs },
-  macro: { flexDirection: 'row', alignItems: 'center', gap: Space.sm },
-  dot: { width: 10, height: 10, borderRadius: 5 },
+  stats: { flexDirection: 'row', alignItems: 'flex-end', gap: Space.sm },
+  statCalories: { flex: 1.4 },
+  actions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: Space.md,
+  },
+  rings: { flexDirection: 'row', justifyContent: 'space-between' },
 });

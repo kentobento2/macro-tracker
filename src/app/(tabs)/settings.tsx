@@ -178,9 +178,9 @@ export default function SettingsScreen() {
                 onPress={() => update({ activityLevel: o.value })}
                 style={[
                   styles.option,
-                  { borderColor: selected ? c.primary : c.border, backgroundColor: selected ? c.primarySoft : c.card },
+                  { borderColor: selected ? c.ink : c.border, backgroundColor: selected ? c.track : c.card },
                 ]}>
-                <AppText variant="label" style={selected ? { color: c.primary } : undefined}>
+                <AppText variant="label">
                   {o.label}
                 </AppText>
                 <AppText variant="small">{o.hint}</AppText>

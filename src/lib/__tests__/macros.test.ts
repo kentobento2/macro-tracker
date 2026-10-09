@@ -1,11 +1,14 @@
 import {
   averageNutrition,
   caloriesFromMacros,
+  macroCaloriePercents,
   nutritionForGrams,
+  percentOfTarget,
   progress,
   remainingNutrition,
   scaleNutrition,
   sumNutrition,
+  targetBar,
   ZERO_NUTRITION,
 } from '../macros';
 
@@ -70,5 +73,41 @@ describe('progress', () => {
   });
   it('treats a missing target as no progress', () => {
     expect(progress(50, 0)).toBe(0);
+  });
+});
+
+describe('macroCaloriePercents', () => {
+  it('splits calories by macro using 4/4/9', () => {
+    // 30 g P (120 kcal), 40 g C (160 kcal), 10 g F (90 kcal) = 370 kcal
+    expect(macroCaloriePercents({ protein: 30, carbs: 40, fat: 10 })).toEqual({ protein: 32, carbs: 43, fat: 24 });
+  });
+  it('is zero for an empty food', () => {
+    expect(macroCaloriePercents({ protein: 0, carbs: 0, fat: 0 })).toEqual({ protein: 0, carbs: 0, fat: 0 });
+  });
+  it('handles a pure-fat food', () => {
+    expect(macroCaloriePercents({ protein: 0, carbs: 0, fat: 14 })).toEqual({ protein: 0, carbs: 0, fat: 100 });
+  });
+});
+
+describe('percentOfTarget', () => {
+  it('rounds and does not clamp', () => {
+    expect(percentOfTarget(541, 2760)).toBe(20);
+    expect(percentOfTarget(150, 100)).toBe(150);
+    expect(percentOfTarget(10, 0)).toBe(0);
+  });
+});
+
+describe('targetBar', () => {
+  it('leaves headroom past the target marker', () => {
+    expect(targetBar(50, 100)).toEqual({ fill: 0.4, marker: 0.8, over: false });
+  });
+  it('stretches the track when over target', () => {
+    const bar = targetBar(150, 100);
+    expect(bar.fill).toBe(1);
+    expect(bar.marker).toBeCloseTo(0.6667);
+    expect(bar.over).toBe(true);
+  });
+  it('is empty without a target', () => {
+    expect(targetBar(50, 0)).toEqual({ fill: 0, marker: 0, over: false });
   });
 });

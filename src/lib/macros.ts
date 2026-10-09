@@ -78,3 +78,32 @@ export function progress(consumed: number, target: number): number {
   if (!(target > 0)) return 0;
   return Math.min(1, Math.max(0, consumed / target));
 }
+
+/**
+ * Share of calories coming from each macro (4/4/9), as whole percentages.
+ * Based on macro calories rather than listed calories, so the three always add up to ~100.
+ */
+export function macroCaloriePercents(m: Macros): Macros {
+  const total = caloriesFromMacros(m);
+  if (!(total > 0)) return { protein: 0, carbs: 0, fat: 0 };
+  return {
+    protein: Math.round(((m.protein * KCAL_PER_GRAM.protein) / total) * 100),
+    carbs: Math.round(((m.carbs * KCAL_PER_GRAM.carbs) / total) * 100),
+    fat: Math.round(((m.fat * KCAL_PER_GRAM.fat) / total) * 100),
+  };
+}
+
+/** Whole percent of a target (not clamped; 130 means 30% over). A missing target gives 0. */
+export function percentOfTarget(value: number, target: number): number {
+  return target > 0 ? Math.round((value / target) * 100) : 0;
+}
+
+/**
+ * Layout for a value-vs-target bar with a marker at the target. The track spans 0..max(target × headroom, value),
+ * so going over the target is visible past the marker. Fractions are 0..1 of the track width.
+ */
+export function targetBar(value: number, target: number, headroom = 1.25): { fill: number; marker: number; over: boolean } {
+  if (!(target > 0)) return { fill: 0, marker: 0, over: false };
+  const max = Math.max(target * headroom, value);
+  return { fill: Math.max(0, value) / max, marker: target / max, over: value > target };
+}
