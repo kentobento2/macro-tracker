@@ -1,6 +1,7 @@
 import type { FoodEntry } from '../entries';
 import {
   applyConfirmed,
+  datesWithEntries,
   enqueue,
   findEntry,
   isDayLoaded,
@@ -128,5 +129,31 @@ describe('isDayLoaded', () => {
     expect(isDayLoaded(pruned, '2025-01-15')).toBe(false);
     // Fetching it again (what the app does when you open that day online) restores it.
     expect(viewDay(replaceDays(pruned, ['2025-01-15'], [old]), [], '2025-01-15')).toEqual([old]);
+  });
+});
+
+describe('datesWithEntries', () => {
+  const days = ['2026-10-06', '2026-10-07', '2026-10-08'];
+
+  it('uses the server list for days not on the device', () => {
+    expect([...datesWithEntries(days, {}, [], new Set(['2026-10-06']))]).toEqual(['2026-10-06']);
+  });
+
+  it('trusts the device for loaded days, including unsynced deletes', () => {
+    const cache: EntryCache = { '2026-10-08': [a] };
+    const q: PendingOp[] = [{ kind: 'delete', id: 'a' }];
+    // Server still says 10-08 has entries, but the local delete wins.
+    expect(datesWithEntries(days, cache, q, new Set(['2026-10-08'])).has('2026-10-08')).toBe(false);
+  });
+
+  it('shows unsynced adds immediately, even offline', () => {
+    const added = e('n', '2026-10-07', '2026-10-07T09:00:00Z');
+    const result = datesWithEntries(days, {}, [{ kind: 'upsert', entry: added }], null);
+    expect([...result]).toEqual(['2026-10-07']);
+  });
+
+  it('marks a loaded empty day as not logged even if the server list is stale', () => {
+    const cache = replaceDays({}, ['2026-10-06'], []);
+    expect(datesWithEntries(days, cache, [], new Set(['2026-10-06'])).size).toBe(0);
   });
 });

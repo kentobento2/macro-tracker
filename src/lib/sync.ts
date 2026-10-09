@@ -82,3 +82,27 @@ export function pruneCache(cache: EntryCache, keepFrom: DateKey): EntryCache {
 export function isDayLoaded(cache: EntryCache, date: DateKey): boolean {
   return Object.prototype.hasOwnProperty.call(cache, date);
 }
+
+/**
+ * Which of `days` have at least one entry, for calendar dots.
+ * - A day loaded on this device is decided by its local view (so unsynced adds/deletes show immediately).
+ * - Otherwise, use the server's list of dates with entries if we have it (`serverDates`), plus any
+ *   pending local adds. Offline with no server list, only pending adds are known.
+ */
+export function datesWithEntries(
+  days: readonly DateKey[],
+  cache: EntryCache,
+  queue: readonly PendingOp[],
+  serverDates: ReadonlySet<DateKey> | null
+): Set<DateKey> {
+  const out = new Set<DateKey>();
+  for (const d of days) {
+    const local = viewDay(cache, queue, d);
+    if (isDayLoaded(cache, d)) {
+      if (local.length > 0) out.add(d);
+    } else if (local.length > 0 || serverDates?.has(d)) {
+      out.add(d);
+    }
+  }
+  return out;
+}

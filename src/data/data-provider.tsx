@@ -11,7 +11,7 @@ import { AppState, Platform } from 'react-native';
 
 import { toDateKey, type DateKey } from '@/lib/dates';
 import { recentFoods, type FoodEntry } from '@/lib/entries';
-import { findEntry, isDayLoaded, viewDay } from '@/lib/sync';
+import { datesWithEntries, findEntry, isDayLoaded, viewDay } from '@/lib/sync';
 
 import { EntriesStore } from './entries-store';
 import { ProfileStore } from './profile-store';
@@ -92,6 +92,33 @@ export function useEntries(dates: readonly DateKey[]): { entries: FoodEntry[]; r
   );
   const loaded = key.split(',').every((d) => isDayLoaded(state.cache, d));
   return { entries, ready: state.ready, loaded };
+}
+
+/** Which of `days` have entries (for calendar dots). Asks the server for dates only; works offline from the device copy. */
+export function useDatesWithEntries(days: readonly DateKey[]): Set<DateKey> {
+  const store = useEntriesStore();
+  const state = useEntriesState();
+  const online = useOnline();
+  const key = days.join(',');
+  const [server, setServer] = useState<{ key: string; dates: Set<DateKey> } | null>(null);
+
+  useEffect(() => {
+    if (!online || !key) return;
+    let cancelled = false;
+    const list = key.split(',');
+    void store.fetchDatesWithEntries(list[0], list[list.length - 1]).then((dates) => {
+      if (!cancelled && dates) setServer({ key, dates });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [store, key, online]);
+
+  const serverDates = server?.key === key ? server.dates : null;
+  return useMemo(
+    () => datesWithEntries(key.split(','), state.cache, state.queue, serverDates),
+    [key, state.cache, state.queue, serverDates]
+  );
 }
 
 export function useEntry(id: string | undefined): FoodEntry | null {

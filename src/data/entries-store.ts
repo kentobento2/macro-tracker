@@ -86,6 +86,16 @@ export class EntriesStore {
     this.persist();
   }
 
+  /** Dates in [start, end] that have at least one entry on the server, or null if unreachable. */
+  async fetchDatesWithEntries(start: DateKey, end: DateKey): Promise<Set<DateKey> | null> {
+    const { data, error } = await supabase
+      .from('food_entries')
+      .select('entry_date')
+      .gte('entry_date', start)
+      .lte('entry_date', end);
+    return error ? null : new Set(data.map((r) => r.entry_date));
+  }
+
   save(entry: FoodEntry) {
     this.mutate({ kind: 'upsert', entry });
   }
