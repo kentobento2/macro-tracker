@@ -1,7 +1,17 @@
-// Minimal service worker: network-first, falling back to cache when offline.
-const CACHE = 'macro-tracker-v1';
+// Service worker: lets the installed app open offline.
+// Same-origin GETs are network-first with a cache fallback. Supabase and food APIs are
+// cross-origin and never cached here — the app keeps its own offline copy of your log.
+const CACHE = 'macro-tracker-v2';
+const APP_SHELL = ['/', '/manifest.json', '/icon.png'];
 
-self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches
+      .open(CACHE)
+      .then((cache) => cache.addAll(APP_SHELL))
+      .then(() => self.skipWaiting())
+  );
+});
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
@@ -14,16 +24,26 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  // Only cache same-origin GETs; never cache Supabase/API traffic.
-  if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
+  const url = new URL(request.url);
+  if (request.method !== 'GET' || url.origin !== self.location.origin) return;
 
   event.respondWith(
     fetch(request)
       .then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE).then((cache) => cache.put(request, copy));
+        if (response.ok) {
+          const copy = response.clone();
+          // Don't cache OAuth callback URLs (they carry one-time codes).
+          const key = request.mode === 'navigate' ? url.pathname : request;
+          caches.open(CACHE).then((cache) => cache.put(key, copy));
+        }
         return response;
       })
-      .catch(() => caches.match(request))
+      .catch(async () => {
+        if (request.mode === 'navigate') {
+          // Any page boots the same client-side app, so fall back to the cached shell.
+          return (await caches.match(url.pathname)) || (await caches.match('/'));
+        }
+        return caches.match(request);
+      })
   );
 });

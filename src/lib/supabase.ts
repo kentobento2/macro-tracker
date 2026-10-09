@@ -4,8 +4,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 
+import type { Database } from './database.types';
+
 // EXPO_PUBLIC_* vars are inlined into the client bundle at build time.
-// Only the anon (public) key belongs here — never the service-role key.
+// Only the anon/publishable key belongs here — never the service-role/secret key.
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -19,9 +21,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
 const isServer = Platform.OS === 'web' && typeof window === 'undefined';
 const storage = Platform.OS === 'web' ? (isServer ? undefined : window.localStorage) : AsyncStorage;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage,
+    flowType: 'pkce',
     autoRefreshToken: !isServer,
     persistSession: !isServer,
     detectSessionInUrl: Platform.OS === 'web',
