@@ -130,6 +130,32 @@ describe('name matching', () => {
     expect(rankFoods('chicken breast', [tyson, fried, grilled], 'grilled')[0].food).toBe(grilled);
   });
 
+  // Real USDA names seen in production for "2 eggs, 1 cup cooked white rice, 6 oz grilled chicken breast".
+  it('picks sensible defaults among real USDA results', () => {
+    const eggs = [
+      food('Eggs', [], 'Oakdell Egg'), // brand containing the food word is not "naming" the brand
+      food('Eggs, Grade A, Large, egg whole'),
+      food('Egg, Benedict'),
+    ];
+    expect(rankFoods('egg', eggs)[0].food.name).toBe('Eggs, Grade A, Large, egg whole');
+
+    const rice = [
+      food('Rice, white, cooked, glutinous'),
+      food('Rice, white, cooked, NS as to fat'),
+      food('Rice, white, cooked, as ingredient'),
+    ];
+    expect(rankFoods('white rice', rice, 'cooked')[0].food.name).not.toBe('Rice, white, cooked, glutinous');
+
+    const chicken = [
+      food('Chicken, breast, meat and skin, raw'),
+      food('Chicken breast, grilled with sauce, skin eaten'),
+      food('Chicken breast, grilled without sauce, skin not eaten'),
+    ];
+    expect(rankFoods('chicken breast', chicken, 'grilled')[0].food.name).toBe(
+      'Chicken breast, grilled without sauce, skin not eaten'
+    );
+  });
+
   it('ranks covered matches first, then by score, keeping relevance order on ties', () => {
     const ranked = rankFoods('banana bread', [banana, food('Bread, banana'), food('Bread')]);
     expect(ranked[0].food.name).toBe('Bread, banana');

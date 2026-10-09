@@ -170,14 +170,14 @@ export function nameTokens(s: string): string[] {
 const NEUTRAL = new Set([
   'whole', 'raw', 'fresh', 'cooked', 'plain', 'regular', 'unprepared', 'prepared', 'ns', 'nfs', 'form', 'type',
   'to', 'as', 'from', 'meat', 'only', 'boneless', 'skinless', 'skin', 'not', 'eaten', 'without', 'added',
-  'large', 'medium', 'small', 'unenriched', 'enriched', 'or',
+  'large', 'medium', 'small', 'unenriched', 'enriched', 'or', 'ingredient', 'grade',
 ]);
 
 /** Taken off when the user didn't name the food's brand: a generic food is the better default. */
 const UNNAMED_BRAND_PENALTY = 0.2;
 
 export type MatchScore = {
-  /** 0..1, higher is better. */
+  /** Higher is better: about 0..1, up to 1.1 with a matching preparation. */
   score: number;
   /** Every word the user said is in the food's name or brand: safe to use without asking. */
   covered: boolean;
@@ -197,12 +197,16 @@ export function scoreMatch(query: string, food: Pick<FoodItem, 'name' | 'brand'>
 
   const hits = q.filter((w) => nameAll.includes(w) || brand.includes(w)).length;
   const coverage = hits / q.length;
-  const name = nameAll.filter((w) => !NEUTRAL.has(w));
+  // "without sauce" / "NS as to fat" say what the food is NOT, so those words don't make it more specific.
+  const name = nameTokens(food.name.replace(/\b(without|ns as to)\b[^,]*/gi, ' ')).filter((w) => !NEUTRAL.has(w));
   const precision = name.length ? name.filter((w) => q.includes(w) || prep.includes(w)).length / name.length : 1;
   const prepBonus = prep.length ? (0.1 * prep.filter((w) => nameAll.includes(w)).length) / prep.length : 0;
-  const brandPenalty = brand.length && !brand.some((w) => q.includes(w)) ? UNNAMED_BRAND_PENALTY : 0;
+  // The brand counts as named only through a word that isn't also the food ("egg" doesn't name "Oakdell Egg").
+  const brandNamed = brand.some((w) => q.includes(w) && !nameAll.includes(w));
+  const brandPenalty = brand.length && !brandNamed ? UNNAMED_BRAND_PENALTY : 0;
 
-  const score = Math.max(0, Math.min(1, 0.75 * coverage + 0.25 * precision + prepBonus - brandPenalty));
+  // Not capped at 1, so a preparation match still separates two otherwise perfect names.
+  const score = Math.max(0, 0.75 * coverage + 0.25 * precision + prepBonus - brandPenalty);
   return { score, covered: coverage === 1 };
 }
 
