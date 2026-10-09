@@ -31,6 +31,19 @@ import {
   type CustomFood,
 } from '../lib/custom-foods';
 import { formatPortion } from '../lib/format';
+import {
+  findRecipeByName,
+  ingredientAmount,
+  ingredientNutrition,
+  makeIngredient,
+  RECIPE_LIMITS,
+  recipePerServing,
+  recipeToItem,
+  recipeTotals,
+  validateRecipe,
+  type Recipe,
+  type RecipeIngredient,
+} from '../lib/recipes';
 import { foodKey, type FoodItem } from '../lib/foods';
 import { nutritionForGrams, remainingNutrition, type Nutrition } from '../lib/macros';
 import { rankFoods, resolvePortion } from '../lib/meal-matching';
@@ -428,7 +441,7 @@ const searchFoods: ToolDef<{ query: z.ZodString }> = {
 const getRecentFoods: ToolDef<Record<string, never>> = {
   name: 'get_recent_foods',
   description:
-    "Get the user's custom foods, favorite foods (with their usual portions), recently logged foods, and their " +
+    "Get the user's recipes (with ingredients), custom foods, favorite foods (with their usual portions), recently logged foods, and their " +
     'meals from the last 7 days. Use this to resolve phrases like "my usual breakfast", "same as yesterday\'s ' +
     'lunch", or "my protein shake". Each item includes a food_ref and a quantity/unit that log_meal accepts ' +
     'as-is. Still confirm with the user before logging.',
@@ -452,6 +465,7 @@ const getRecentFoods: ToolDef<Record<string, never>> = {
     for (const e of week) meals.set(`${e.date}|${e.meal}`, [...(meals.get(`${e.date}|${e.meal}`) ?? []), e]);
     return ok({
       today,
+      recipes: saved.recipes.map(describeRecipe),
       custom_foods: saved.customFoods.map((f) => ({ ...describeCustomFood(f), usual_portion: { quantity: 1, unit: 'serving' } })),
       favorites: saved.favorites.map((f) => {
         const grams = f.portion.unit === 'serving' && f.portion.serving ? f.portion.quantity * f.portion.serving.grams : null;
@@ -776,12 +790,175 @@ function describeCustomFood(f: CustomFood) {
   };
 }
 
+// ---------- create_recipe / update_recipe ----------
+
+const RL = RECIPE_LIMITS;
+const INGREDIENTS = z
+  .array(z.object({ food_ref: FOOD_REF, quantity: QUANTITY, unit: UNIT }))
+  .min(1)
+  .max(RL.maxIngredients)
+  .describe('Every ingredient with the amount used for the whole batch, as confirmed with preview_meal.');
+const SERVINGS = z.number().positive().max(RL.maxServings).describe('How many servings the batch makes.');
+const COOKED_GRAMS = z
+  .number()
+  .positive()
+  .max(RL.maxCookedGrams)
+  .describe('Weight of the whole cooked dish in grams (weighed, minus the pot). Lets the user log by weight.');
+
+/** Resolve ingredient food_refs and amounts (like log_meal): all of them, or an error and nothing. */
+async function resolveIngredients(
+  items: readonly { food_ref: string; quantity: number; unit: string }[],
+  ctx: ToolContext,
+  saved: Awaited<ReturnType<typeof loadSavedFoods>>
+): Promise<{ ok: true; ingredients: RecipeIngredient[] } | { ok: false; error: string }> {
+  const ingredients: RecipeIngredient[] = [];
+  for (const [i, item] of items.entries()) {
+    if (item.food_ref.startsWith('recipe:')) {
+      return { ok: false, error: `Ingredient ${i + 1}: a recipe can't be an ingredient of another recipe. Nothing was saved.` };
+    }
+    let food: FoodItem | null;
+    try {
+      food = await resolveFoodRef(item.food_ref, saved, ctx.foods);
+    } catch {
+      return { ok: false, error: `Ingredient ${i + 1}: the food database couldn't be reached right now. Nothing was saved; try again in a minute.` };
+    }
+    if (!food) {
+      return { ok: false, error: `Ingredient ${i + 1}: food_ref "${item.food_ref}" was not found. Run preview_meal again. Nothing was saved.` };
+    }
+    const portion = resolvePortion(food, item.quantity, item.unit);
+    if (!portion.ok) return { ok: false, error: `Ingredient ${i + 1} (${food.name}): ${portion.error} Nothing was saved.` };
+    ingredients.push(makeIngredient(food, portion.value.portion));
+  }
+  return { ok: true, ingredients };
+}
+
+function describeRecipe(r: Recipe) {
+  const item = recipeToItem(r);
+  const perServing = recipePerServing(r);
+  return {
+    recipe_ref: foodKey(item),
+    name: r.name,
+    servings: r.servings,
+    cooked_weight_grams: r.cookedGrams,
+    whole_batch: macros(recipeTotals(r)),
+    per_serving: perServing ? macros(perServing) : null,
+    ingredients: r.ingredients.map((ing) => ({
+      food_ref: foodKey(ing.food),
+      name: ing.food.name,
+      brand: ing.food.brand,
+      amount: ingredientAmount(ing),
+      // Re-sendable as-is to create_recipe / update_recipe.
+      ...(ing.serving?.weightUnknown ? { quantity: ing.quantity, unit: 'serving' } : { quantity: r1(ing.grams), unit: 'g' }),
+      calories: Math.round(ingredientNutrition(ing).calories),
+    })),
+    how_to_log: r.cookedGrams
+      ? `log_meal with food_ref "${foodKey(item)}" and the amount eaten in g or oz${r.servings ? ', or unit "serving"' : ''}.`
+      : `log_meal with food_ref "${foodKey(item)}", unit "serving" (no cooked weight, so not by weight).`,
+  };
+}
+
+const createRecipe: ToolDef<{
+  name: z.ZodString;
+  ingredients: typeof INGREDIENTS;
+  servings: z.ZodOptional<typeof SERVINGS>;
+  cooked_weight_grams: z.ZodOptional<typeof COOKED_GRAMS>;
+}> = {
+  name: 'create_recipe',
+  description:
+    "Save one of the user's recipes (a dish made from several ingredients) so portions of it can be logged. " +
+    'First run preview_meal with the ingredients and the amounts used for the whole batch, show the matches and ' +
+    'totals, and get confirmation; then call this with the confirmed food_refs. Give servings (how many the ' +
+    'batch makes) and/or cooked_weight_grams (the finished dish weighed, minus the pot); with the weight, the ' +
+    'user can log exact grams or ounces. Totals are calculated on the server. Returns a recipe_ref for log_meal.',
+  inputSchema: {
+    name: z.string().min(1).max(RL.nameLength).describe('Recipe name, e.g. "Sausage pasta".'),
+    ingredients: INGREDIENTS,
+    servings: SERVINGS.optional(),
+    cooked_weight_grams: COOKED_GRAMS.optional(),
+  },
+  annotations: { title: 'Create a recipe', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  async run(args, ctx) {
+    const settings = await ctx.store.settings();
+    const saved = await loadSavedFoods(ctx.store, dateKeyInTimeZone(ctx.now, settings.timezone));
+    const same = findRecipeByName(saved.recipes, args.name);
+    if (same) {
+      return fail(`The user already has a recipe named "${same.name}" (recipe_ref "recipe:${same.id}"). Use update_recipe to change it, or pick another name.`);
+    }
+    const resolved = await resolveIngredients(args.ingredients, ctx, saved);
+    if (!resolved.ok) return fail(resolved.error);
+    const v = validateRecipe({
+      name: args.name,
+      ingredients: resolved.ingredients,
+      servings: args.servings ?? null,
+      cookedGrams: args.cooked_weight_grams ?? null,
+    });
+    if (!v.ok) return fail(`Not saved: ${Object.values(v.errors).join(' ')}`);
+    const recipe: Recipe = { ...v.value, id: ctx.newId(), updatedAt: ctx.now.toISOString() };
+    await ctx.store.insertRecipe(recipe);
+    return ok({ saved: describeRecipe(recipe) });
+  },
+};
+
+const updateRecipe: ToolDef<{
+  recipe_ref: z.ZodString;
+  name: z.ZodOptional<z.ZodString>;
+  ingredients: z.ZodOptional<typeof INGREDIENTS>;
+  servings: z.ZodOptional<typeof SERVINGS>;
+  cooked_weight_grams: z.ZodOptional<typeof COOKED_GRAMS>;
+}> = {
+  name: 'update_recipe',
+  description:
+    "Change one of the user's recipes: its name, servings, the cooked weight of the latest batch (each batch " +
+    'cooks down differently, so update it when the user weighs a new one), or the ingredients. Ingredients ' +
+    'replace the whole list: start from the list get_recent_foods returns for the recipe, change what the user ' +
+    'asked, and preview new ingredients with preview_meal first. Past log entries keep their numbers.',
+  inputSchema: {
+    recipe_ref: z.string().regex(/^recipe:[0-9a-f-]{36}$/).describe('The recipe_ref, e.g. from get_recent_foods.'),
+    name: z.string().min(1).max(RL.nameLength).optional(),
+    ingredients: INGREDIENTS.optional(),
+    servings: SERVINGS.optional(),
+    cooked_weight_grams: COOKED_GRAMS.optional(),
+  },
+  annotations: { title: 'Update a recipe', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  async run(args, ctx) {
+    if (args.name === undefined && !args.ingredients && args.servings === undefined && args.cooked_weight_grams === undefined) {
+      return fail('Nothing to change: give a new name, ingredients, servings, or cooked_weight_grams.');
+    }
+    const settings = await ctx.store.settings();
+    const saved = await loadSavedFoods(ctx.store, dateKeyInTimeZone(ctx.now, settings.timezone));
+    const before = saved.recipes.find((r) => `recipe:${r.id}` === args.recipe_ref);
+    if (!before) return fail(`No recipe "${args.recipe_ref}" in the user's recipes. Call get_recent_foods to see them.`);
+    if (args.name !== undefined) {
+      const clash = findRecipeByName(saved.recipes, args.name);
+      if (clash && clash.id !== before.id) return fail(`The user already has another recipe named "${clash.name}".`);
+    }
+    let ingredients = before.ingredients;
+    if (args.ingredients) {
+      const resolved = await resolveIngredients(args.ingredients, ctx, saved);
+      if (!resolved.ok) return fail(resolved.error);
+      ingredients = resolved.ingredients;
+    }
+    const v = validateRecipe({
+      name: args.name ?? before.name,
+      ingredients,
+      servings: args.servings ?? before.servings,
+      cookedGrams: args.cooked_weight_grams ?? before.cookedGrams,
+    });
+    if (!v.ok) return fail(`Not saved: ${Object.values(v.errors).join(' ')}`);
+    const after: Recipe = { ...v.value, id: before.id, updatedAt: ctx.now.toISOString() };
+    if (!(await ctx.store.updateRecipe(after))) return fail('That recipe could not be updated. Nothing was changed.');
+    return ok({ before: describeRecipe(before), after: describeRecipe(after) });
+  },
+};
+
 export const TOOLS = [
   previewMeal,
   logMeal,
   searchFoods,
   getRecentFoods,
   createCustomFood,
+  createRecipe,
+  updateRecipe,
   getDailySummary,
   updateLogEntry,
   deleteLogEntry,

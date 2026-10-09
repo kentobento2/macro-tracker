@@ -1,12 +1,13 @@
 // Mapping between database rows (snake_case) and app types. Pure.
 
-import type { Database } from './database.types';
+import type { Database, Json } from './database.types';
 import type { WeighIn } from './bodyweight';
 import { isDateKey } from './dates';
 import { isMeal, type FoodEntry } from './entries';
 import type { CustomFood } from './custom-foods';
 import type { Favorite } from './favorites';
-import type { FoodSource } from './foods';
+import type { Recipe, RecipeIngredient, RecipeSnapshot } from './recipes';
+import type { FoodItem, FoodSource } from './foods';
 import type { ActivityLevel, Goal, Sex, Targets } from './targets';
 import type { PortionUnit, Serving } from './units';
 
@@ -28,7 +29,7 @@ export type Profile = {
   targets: Targets | null;
 };
 
-const SOURCES: readonly FoodSource[] = ['usda', 'off', 'custom'];
+const SOURCES: readonly FoodSource[] = ['usda', 'off', 'custom', 'recipe'];
 const UNITS: readonly PortionUnit[] = ['g', 'oz', 'serving'];
 const SEXES: readonly Sex[] = ['male', 'female'];
 const ACTIVITY: readonly ActivityLevel[] = ['sedentary', 'light', 'moderate', 'active', 'very_active'];
@@ -55,6 +56,8 @@ function rowServing(label: string | null, grams: number | null, servings: readon
   return match?.weightUnknown ? { label: l, grams: g, weightUnknown: true } : { label: l, grams: g };
 }
 
+const withRecipe = (recipe: RecipeSnapshot | null) => (recipe ? { recipe } : {});
+
 /** Returns null for rows that don't match the app's expectations (defensive; the DB has checks too). */
 export function entryFromRow(r: EntryRow): FoodEntry | null {
   const source = oneOf(SOURCES, r.source);
@@ -80,6 +83,7 @@ export function entryFromRow(r: EntryRow): FoodEntry | null {
       fat: Number(r.fat_per_100g),
     },
     createdAt: r.created_at,
+    ...withRecipe(parseRecipeSnapshot(r.recipe)),
   };
 }
 
@@ -103,6 +107,7 @@ export function entryToRow(e: FoodEntry): EntryInsert {
     carbs_per_100g: e.per100g.carbs,
     fat_per_100g: e.per100g.fat,
     created_at: e.createdAt,
+    recipe: (e.recipe ?? null) as Json | null,
   };
 }
 
@@ -238,5 +243,89 @@ export function customFoodToRow(userId: string, f: CustomFood): CustomFoodInsert
     carbs_g: f.carbs,
     fat_g: f.fat,
     updated_at: f.updatedAt,
+  };
+}
+
+// ---------- Recipes ----------
+
+const finiteNonNeg = (v: unknown): number | null => {
+  const n = Number(v);
+  return v !== null && v !== undefined && Number.isFinite(n) && n >= 0 ? n : null;
+};
+
+function parseNutrition(v: unknown): { calories: number; protein: number; carbs: number; fat: number } | null {
+  if (!v || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  const [calories, protein, carbs, fat] = [o.calories, o.protein, o.carbs, o.fat].map(finiteNonNeg);
+  return calories === null || protein === null || carbs === null || fat === null ? null : { calories, protein, carbs, fat };
+}
+
+/** The ingredient breakdown stored on an entry (null if absent or malformed). */
+export function parseRecipeSnapshot(v: unknown): RecipeSnapshot | null {
+  if (!v || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  const batchGrams = finiteNonNeg(o.batchGrams);
+  if (!batchGrams || !Array.isArray(o.ingredients)) return null;
+  const ingredients = o.ingredients.flatMap((i) => {
+    const n = parseNutrition(i?.nutrition);
+    return n && typeof i.name === 'string'
+      ? [{ name: i.name, brand: typeof i.brand === 'string' ? i.brand : null, amount: typeof i.amount === 'string' ? i.amount : '', nutrition: n }]
+      : [];
+  });
+  return { batchGrams, ingredients };
+}
+
+function parseFoodSnapshot(v: unknown): FoodItem | null {
+  if (!v || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  const source = oneOf(SOURCES, o.source);
+  const per100g = parseNutrition(o.per100g);
+  if (!source || !per100g || typeof o.name !== 'string') return null;
+  return {
+    source,
+    sourceId: typeof o.sourceId === 'string' ? o.sourceId : null,
+    name: o.name,
+    brand: typeof o.brand === 'string' ? o.brand : null,
+    per100g,
+    servings: parseServings(o.servings),
+    caloriesDerived: o.caloriesDerived === true,
+  };
+}
+
+function parseIngredients(v: unknown): RecipeIngredient[] {
+  if (!Array.isArray(v)) return [];
+  return v.flatMap((i) => {
+    const food = parseFoodSnapshot(i?.food);
+    const unit = oneOf(UNITS, i?.unit);
+    const quantity = finiteNonNeg(i?.quantity);
+    const grams = finiteNonNeg(i?.grams);
+    if (!food || !unit || !quantity || !grams) return [];
+    const serving = unit === 'serving' ? (parseServings([i.serving])[0] ?? null) : null;
+    if (unit === 'serving' && !serving) return [];
+    return [{ food, quantity, unit, serving, grams }];
+  });
+}
+
+type RecipeRow = Database['public']['Tables']['recipes']['Row'];
+type RecipeInsert = Database['public']['Tables']['recipes']['Insert'];
+
+export function recipeFromRow(r: RecipeRow): Recipe | null {
+  const ingredients = parseIngredients(r.ingredients);
+  if (!r.id || !r.name || ingredients.length === 0) return null;
+  const servings = numOrNull(r.servings);
+  const cookedGrams = numOrNull(r.cooked_grams);
+  if (servings === null && cookedGrams === null) return null;
+  return { id: r.id, name: r.name, ingredients, servings, cookedGrams, updatedAt: r.updated_at };
+}
+
+export function recipeToRow(userId: string, r: Recipe): RecipeInsert {
+  return {
+    id: r.id,
+    user_id: userId,
+    name: r.name,
+    ingredients: r.ingredients as unknown as Json,
+    servings: r.servings,
+    cooked_grams: r.cookedGrams,
+    updated_at: r.updatedAt,
   };
 }

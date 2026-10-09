@@ -140,6 +140,7 @@ export type Database = {
           meal: string;
           protein_per_100g: number;
           quantity: number;
+          recipe: Json | null;
           serving_grams: number | null;
           serving_label: string | null;
           servings: Json;
@@ -162,6 +163,7 @@ export type Database = {
           meal: string;
           protein_per_100g: number;
           quantity: number;
+          recipe?: Json | null;
           serving_grams?: number | null;
           serving_label?: string | null;
           servings?: Json;
@@ -172,6 +174,30 @@ export type Database = {
           user_id?: string;
         };
         Update: Partial<Database['public']['Tables']['food_entries']['Insert']>;
+        Relationships: [];
+      };
+      recipes: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          ingredients: Json;
+          servings: number | null;
+          cooked_grams: number | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          user_id?: string;
+          name: string;
+          ingredients: Json;
+          servings?: number | null;
+          cooked_grams?: number | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['recipes']['Insert']>;
         Relationships: [];
       };
       profiles: {

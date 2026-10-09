@@ -19,7 +19,9 @@ A remote MCP server that lets Claude and Meta Muse log meals and weigh-ins into 
 | `preview_meal` | Matches parsed items to foods and computes macros. Writes nothing. | read-only |
 | `log_meal` | Logs confirmed items (from `preview_meal`) to a day and meal. All or nothing. | write |
 | `search_foods` | Searches your saved foods (custom foods first), then USDA and Open Food Facts. | read-only |
-| `get_recent_foods` | Your custom foods, favorites and recently logged foods with their usual portions. | read-only |
+| `get_recent_foods` | Your recipes (with ingredients), custom foods, favorites and recently logged foods with their usual portions. | read-only |
+| `create_recipe` | Saves a dish from its ingredients (food_refs from `preview_meal`) plus servings and/or cooked weight; totals on the server. | write |
+| `update_recipe` | Changes a recipe's name, ingredients, servings or the latest batch's cooked weight. | write, idempotent |
 | `create_custom_food` | Saves a food you describe with its nutrition per serving (label, menu, recipe). Same name = update. | write, idempotent |
 | `get_daily_summary` | A day's entries, totals vs. targets, and remaining amounts. | read-only |
 | `update_log_entry` | Changes an entry's amount, food or meal. | write, idempotent |
@@ -106,4 +108,5 @@ Run as each user, in Claude and in Muse. Check every step in the app.
 11. **Isolation:** with your fiancée's connection, ask "What did I eat today?" You must see only her entries, never yours.
 12. **Revoke:** revoke the Muse token in Settings, then ask Muse anything. It should fail with an authorization error.
 13. **Custom food:** "My poke bowl from Ono is 750 calories, 40 g protein, 70 g carbs, 15 g fat. Save it and log one for lunch." The assistant confirms the numbers, saves it, and logs "1 bowl". It appears under My foods in Add food, and the entry shows no gram weight.
-14. **Timezone:** around midnight Honolulu time, "today" follows Honolulu time, not UTC.
+14. **Recipe:** "I made pasta with 8 oz Italian sausage, 8 oz dry pasta, 16 oz crushed tomatoes, half a cup of heavy cream and 100 g parmesan; it weighed 1450 g and makes 4 servings. Save it as Sausage pasta." The assistant previews the ingredients, confirms, and saves. Then "I had 6 oz of the sausage pasta" logs one line (about 298 kcal). "This batch weighed 1300 g" updates it for the next log.
+15. **Timezone:** around midnight Honolulu time, "today" follows Honolulu time, not UTC.

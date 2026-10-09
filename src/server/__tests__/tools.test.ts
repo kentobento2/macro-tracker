@@ -351,6 +351,93 @@ describe('create_custom_food', () => {
   });
 });
 
+describe('create_recipe / update_recipe', () => {
+  // Rice 500 g (650 kcal) + 2 large eggs (100 g, 155 kcal) = 805 kcal for the batch.
+  const friedRice = {
+    name: 'Fried rice',
+    ingredients: [
+      { food_ref: 'usda:169756', quantity: 500, unit: 'g' },
+      { food_ref: 'usda:748967', quantity: 2, unit: 'large' },
+    ],
+    servings: 4,
+    cooked_weight_grams: 600,
+  };
+
+  it('saves a recipe with server-side totals and logs a portion by weight or by serving', async () => {
+    const r = data(await call('create_recipe', friedRice));
+    expect(r.saved).toMatchObject({ name: 'Fried rice', whole_batch: { calories: 805 }, per_serving: { calories: 201 } });
+    expect(r.saved.ingredients.map((i: { amount: string }) => i.amount)).toEqual(['500 g', '2 × 1 large (100 g)']);
+    const ref = r.saved.recipe_ref as string;
+    expect(ref).toMatch(/^recipe:/);
+
+    // 150 g of a 600 g batch is a quarter: 201 kcal, the same as 1 serving.
+    const byWeight = data(await call('log_meal', { items: [{ food_ref: ref, quantity: 150, unit: 'g' }], meal: 'dinner' }));
+    expect(byWeight.saved[0]).toMatchObject({ food: 'Fried rice', calories: 201 });
+    const byServing = data(await call('log_meal', { items: [{ food_ref: ref, quantity: 1, unit: 'serving' }], meal: 'dinner' }));
+    expect(byServing.saved[0]).toMatchObject({ portion: '1 serving (150 g)', calories: 201 });
+
+    // The entry keeps the ingredient breakdown (for "show ingredients").
+    const row = db.tables.food_entries.find((e) => e.user_id === A && e.source === 'recipe');
+    expect((row?.recipe as { ingredients: unknown[] }).ingredients).toHaveLength(2);
+  });
+
+  it('with only servings, refuses grams', async () => {
+    const r = data(await call('create_recipe', { ...friedRice, name: 'Soup', cooked_weight_grams: undefined }));
+    const bad = await call('log_meal', { items: [{ food_ref: r.saved.recipe_ref, quantity: 150, unit: 'g' }], meal: 'dinner' });
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.error).toMatch(/no known weight/);
+  });
+
+  it('updates the batch weight for new logs; past entries keep their numbers', async () => {
+    const ref = data(await call('create_recipe', friedRice)).saved.recipe_ref;
+    await call('log_meal', { items: [{ food_ref: ref, quantity: 150, unit: 'g' }], meal: 'lunch' });
+    const u = data(await call('update_recipe', { recipe_ref: ref, cooked_weight_grams: 805 }));
+    expect(u.before.cooked_weight_grams).toBe(600);
+    expect(u.after.cooked_weight_grams).toBe(805);
+    const later = data(await call('log_meal', { items: [{ food_ref: ref, quantity: 150, unit: 'g' }], meal: 'dinner' }));
+    expect(later.saved[0].calories).toBe(150); // 150 g of an 805 g, 805 kcal batch
+    const day = data(await call('get_daily_summary', {}));
+    expect(day.meals.lunch.entries[0].calories).toBe(201);
+  });
+
+  it('replaces ingredients from the list get_recent_foods returns', async () => {
+    const ref = data(await call('create_recipe', friedRice)).saved.recipe_ref;
+    const listed = data(await call('get_recent_foods', {})).recipes[0];
+    const ingredients = listed.ingredients.map((i: { food_ref: string; quantity: number; unit: string }) => ({
+      food_ref: i.food_ref,
+      quantity: i.food_ref === 'usda:748967' ? 150 : i.quantity, // three eggs instead of two
+      unit: i.unit,
+    }));
+    const u = data(await call('update_recipe', { recipe_ref: ref, ingredients }));
+    expect(u.after.whole_batch.calories).toBe(650 + 233);
+  });
+
+  it('rejects duplicates, nested recipes and unknown ingredients without saving', async () => {
+    const ref = data(await call('create_recipe', friedRice)).saved.recipe_ref;
+    const dup = await call('create_recipe', { ...friedRice, name: 'FRIED RICE' });
+    expect(!dup.ok && dup.error).toMatch(/already has a recipe named.*update_recipe/);
+    const nested = await call('create_recipe', { ...friedRice, name: 'Bowl', ingredients: [{ food_ref: ref, quantity: 1, unit: 'serving' }] });
+    expect(!nested.ok && nested.error).toMatch(/can't be an ingredient/);
+    const unknown = await call('create_recipe', { ...friedRice, name: 'Mystery', ingredients: [{ food_ref: 'usda:999', quantity: 1, unit: 'g' }] });
+    expect(!unknown.ok && unknown.error).toMatch(/not found.*Nothing was saved/);
+    const noYield = await call('create_recipe', { name: 'No yield', ingredients: friedRice.ingredients });
+    expect(!noYield.ok && noYield.error).toMatch(/servings/);
+    expect(db.tables.recipes.filter((r) => r.user_id === A)).toHaveLength(1);
+  });
+
+  it("keeps each user's recipes private", async () => {
+    const ref = data(await call('create_recipe', friedRice, A)).saved.recipe_ref;
+    expect(data(await call('get_recent_foods', {}, B)).recipes).toEqual([]);
+    const log = await call('log_meal', { items: [{ food_ref: ref, quantity: 1, unit: 'serving' }], meal: 'lunch' }, B);
+    expect(log.ok).toBe(false);
+    const upd = await call('update_recipe', { recipe_ref: ref, cooked_weight_grams: 1 }, B);
+    expect(upd.ok).toBe(false);
+    expect(db.tables.recipes.find((r) => r.user_id === A)?.cooked_grams).toBe(600);
+    // B can use the same name for their own recipe.
+    expect(data(await call('create_recipe', friedRice, B)).saved.recipe_ref).not.toBe(ref);
+  });
+});
+
 describe('isolation between users', () => {
   it("user A cannot read user B's entries", async () => {
     const a = data(await call('get_daily_summary', {}, A));

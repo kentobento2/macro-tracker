@@ -11,6 +11,7 @@ import type { DateKey } from '../lib/dates';
 import type { FoodEntry } from '../lib/entries';
 import type { CustomFood } from '../lib/custom-foods';
 import type { Favorite } from '../lib/favorites';
+import type { Recipe } from '../lib/recipes';
 import {
   customFoodFromRow,
   customFoodToRow,
@@ -18,6 +19,8 @@ import {
   entryToRow,
   favoriteFromRow,
   profileFromRow,
+  recipeFromRow,
+  recipeToRow,
   weighInFromRow,
   weighInToRow,
   type UnitSystem,
@@ -44,6 +47,10 @@ export interface UserStore {
   insertCustomFood(food: CustomFood): Promise<void>;
   /** Replaces one of this user's custom foods; false if it isn't theirs. */
   updateCustomFood(food: CustomFood): Promise<boolean>;
+  recipes(): Promise<Recipe[]>;
+  insertRecipe(recipe: Recipe): Promise<void>;
+  /** Replaces one of this user's recipes; false if it isn't theirs. */
+  updateRecipe(recipe: Recipe): Promise<boolean>;
   saveWeight(w: WeighIn): Promise<void>;
   weightsBetween(from: DateKey, to: DateKey): Promise<WeighIn[]>;
 }
@@ -139,6 +146,29 @@ export function createUserStore(db: Db, userId: string): UserStore {
         .eq('id', food.id)
         .select('id');
       if (error) fail('Updating the custom food failed', error);
+      return (data ?? []).length === 1;
+    },
+
+    async recipes() {
+      const { data, error } = await db.from('recipes').select('*').eq('user_id', userId);
+      if (error) fail('Loading recipes failed', error);
+      return (data ?? []).map(recipeFromRow).filter((r): r is Recipe => r !== null);
+    },
+
+    async insertRecipe(recipe) {
+      const { error } = await db.from('recipes').insert(recipeToRow(userId, recipe));
+      if (error) fail('Saving the recipe failed', error);
+    },
+
+    async updateRecipe(recipe) {
+      const { id: _id, user_id: _user, ...patch } = recipeToRow(userId, recipe);
+      const { data, error } = await db
+        .from('recipes')
+        .update(patch)
+        .eq('user_id', userId)
+        .eq('id', recipe.id)
+        .select('id');
+      if (error) fail('Updating the recipe failed', error);
       return (data ?? []).length === 1;
     },
 

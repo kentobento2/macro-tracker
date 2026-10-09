@@ -1,9 +1,10 @@
 // Normalizes USDA FoodData Central and Open Food Facts records into one FoodItem shape. Pure.
 
 import { caloriesFromMacros, type Nutrition } from './macros';
+import type { RecipeSnapshot } from './recipes';
 import type { Serving } from './units';
 
-export type FoodSource = 'usda' | 'off' | 'custom';
+export type FoodSource = 'usda' | 'off' | 'custom' | 'recipe';
 
 export type FoodItem = {
   source: FoodSource;
@@ -14,6 +15,8 @@ export type FoodItem = {
   servings: Serving[];
   /** True when calories weren't in the source and were computed from macros (4/4/9). */
   caloriesDerived: boolean;
+  /** For recipes: the ingredient breakdown, kept on logged entries. */
+  recipe?: RecipeSnapshot;
 };
 
 const KJ_PER_KCAL = 4.184;

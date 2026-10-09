@@ -6,6 +6,7 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { BarcodeScanner } from '@/components/barcode-scanner';
 import { CustomFoodForm } from '@/components/custom-food-form';
+import { draftFromRecipe, IngredientStep, RecipeEditor, type RecipeDraft } from '@/components/recipe-editor';
 import {
   ActionButton,
   AppText,
@@ -23,6 +24,8 @@ import {
 import { MIN_TOUCH, Space, useColors } from '@/constants/theme';
 import {
   useCustomFoods,
+  useRecipes,
+  useRecipesStore,
   useEntriesStore,
   useEntry,
   useFavorites,
@@ -41,6 +44,15 @@ import {
   type SearchResults,
 } from '@/data/food-api';
 import { customFoodToItem, filterCustomFoods, type CustomFood } from '@/lib/custom-foods';
+import {
+  batchShare,
+  filterRecipes,
+  portionIngredients,
+  RECIPE_LIMITS,
+  recipeToItem,
+  type Recipe,
+  type RecipeIngredient,
+} from '@/lib/recipes';
 import { isDateKey, type DateKey } from '@/lib/dates';
 import {
   buildEntry,
@@ -65,6 +77,7 @@ const SOURCE_LABELS: Record<FoodSource, string> = {
   usda: 'USDA FoodData Central',
   off: 'Open Food Facts',
   custom: 'Custom',
+  recipe: 'Recipe',
 };
 
 /** The custom-food form, when open: creating one (name prefilled from the search) or editing one. */
@@ -73,12 +86,23 @@ type CustomFormState = { kind: 'create'; name: string } | { kind: 'edit'; food: 
 const servingPortion = (food: FoodItem): Portion | undefined =>
   food.servings[0] ? { quantity: 1, unit: 'serving', serving: food.servings[0] } : undefined;
 
+/** Building or editing a recipe: the draft, plus which step of it is showing. */
+type RecipeFlow = {
+  draft: RecipeDraft;
+  step:
+    | { kind: 'editor' }
+    | { kind: 'search' }
+    | { kind: 'ingredient'; food: FoodItem; index: number | null; initial: Portion | null };
+};
+
 export default function AddFoodScreen() {
   const params = useLocalSearchParams<{ date?: string; meal?: string; entryId?: string }>();
   const today = useToday();
   const existing = useEntry(params.entryId);
+  const { recipes } = useRecipes();
   const [picked, setPicked] = useState<{ food: FoodItem; portion?: Portion } | null>(null);
   const [customForm, setCustomForm] = useState<CustomFormState | null>(null);
+  const [recipeFlow, setRecipeFlow] = useState<RecipeFlow | null>(null);
   // Editing starts on the portion step with the logged food.
   const existingFood = useMemo(() => (existing ? foodFromEntry(existing) : null), [existing]);
   const food = picked?.food ?? existingFood;
@@ -86,45 +110,131 @@ export default function AddFoodScreen() {
   const date: DateKey = existing?.date ?? (isDateKey(params.date) ? params.date : today);
   const meal: Meal = existing?.meal ?? (isMeal(params.meal) ? params.meal : mealForTime(new Date().getHours()));
 
-  const title = customForm ? (customForm.kind === 'edit' ? 'Edit custom food' : 'New custom food') : params.entryId ? 'Edit entry' : 'Add food';
+  /** Log a picked food; a recipe (from favorites or recents) uses its current definition. */
+  const pick = (f: FoodItem, portion?: Portion) => {
+    const recipe = f.source === 'recipe' ? recipes.find((r) => r.id === f.sourceId) : undefined;
+    const item = recipe ? recipeToItem(recipe) : f;
+    setPicked({ food: item, portion: recipe ? servingPortion(item) : portion });
+  };
+  /** After saving a recipe, continue to logging it. */
+  const logRecipe = (r: Recipe) => {
+    const item = recipeToItem(r);
+    setPicked({ food: item, portion: servingPortion(item) });
+    setRecipeFlow(null);
+  };
+  const withStep = (step: RecipeFlow['step']) => setRecipeFlow((f) => (f ? { ...f, step } : f));
+  const startIngredient = (f: FoodItem, portion?: Portion) => withStep({ kind: 'ingredient', food: f, index: null, initial: portion ?? null });
+
+  const title = customForm
+    ? customForm.kind === 'edit'
+      ? 'Edit custom food'
+      : 'New custom food'
+    : recipeFlow
+      ? recipeFlow.step.kind === 'editor'
+        ? recipeFlow.draft.id
+          ? 'Edit recipe'
+          : 'New recipe'
+        : 'Add ingredient'
+      : params.entryId
+        ? 'Edit entry'
+        : 'Add food';
+
+  let body: React.ReactNode;
+  if (params.entryId && !existing) {
+    body = <AppText variant="muted">This entry no longer exists.</AppText>;
+  } else if (customForm) {
+    body = (
+      <CustomFoodForm
+        existing={customForm.kind === 'edit' ? customForm.food : null}
+        initialName={customForm.kind === 'create' ? customForm.name : ''}
+        onSaved={(saved) => {
+          // Continue with the new definition: as a recipe ingredient, or to the portion step (1 serving).
+          const item = customFoodToItem(saved);
+          if (recipeFlow) startIngredient(item, servingPortion(item));
+          else setPicked({ food: item, portion: servingPortion(item) });
+          setCustomForm(null);
+        }}
+        onDeleted={() => {
+          setPicked(null);
+          setCustomForm(null);
+        }}
+        onCancel={() => setCustomForm(null)}
+      />
+    );
+  } else if (recipeFlow) {
+    const { draft, step } = recipeFlow;
+    if (step.kind === 'search') {
+      body = (
+        <SearchStep
+          forIngredient
+          onPick={(f, portion) => startIngredient(f, portion)}
+          onCreateCustom={(name) => setCustomForm({ kind: 'create', name })}
+          onCreateRecipe={() => {}}
+          onCancel={() => withStep({ kind: 'editor' })}
+        />
+      );
+    } else if (step.kind === 'ingredient') {
+      const replaceAt = (ingredients: RecipeIngredient[]) => setRecipeFlow({ draft: { ...draft, ingredients }, step: { kind: 'editor' } });
+      body = (
+        <IngredientStep
+          key={`${foodKey(step.food)}-${step.index}`}
+          food={step.food}
+          initial={step.initial}
+          onDone={(ing) =>
+            replaceAt(step.index === null ? [...draft.ingredients, ing] : draft.ingredients.map((x, i) => (i === step.index ? ing : x)))
+          }
+          onRemove={step.index === null ? undefined : () => replaceAt(draft.ingredients.filter((_, i) => i !== step.index))}
+          onBack={() => withStep(step.index === null ? { kind: 'search' } : { kind: 'editor' })}
+        />
+      );
+    } else {
+      body = (
+        <RecipeEditor
+          draft={draft}
+          onChange={(d) => setRecipeFlow({ draft: d, step })}
+          onAddIngredient={() => withStep({ kind: 'search' })}
+          onEditIngredient={(i) => {
+            const ing = draft.ingredients[i];
+            withStep({ kind: 'ingredient', food: ing.food, index: i, initial: { quantity: ing.quantity, unit: ing.unit, serving: ing.serving } });
+          }}
+          onSaved={logRecipe}
+          onDeleted={() => {
+            setPicked(null);
+            setRecipeFlow(null);
+          }}
+          onCancel={() => setRecipeFlow(null)}
+        />
+      );
+    }
+  } else if (food) {
+    body = (
+      <PortionStep
+        key={`${foodKey(food)}|${food.per100g.calories}`}
+        food={food}
+        date={date}
+        initialMeal={meal}
+        existing={existing}
+        initialPortion={existing ? null : (picked?.portion ?? null)}
+        onBack={existing ? undefined : () => setPicked(null)}
+        onEditCustomFood={existing ? undefined : (f) => setCustomForm({ kind: 'edit', food: f })}
+        onEditRecipe={existing ? undefined : (r) => setRecipeFlow({ draft: draftFromRecipe(r), step: { kind: 'editor' } })}
+        onRecipeChanged={existing ? undefined : (item, portion) => setPicked({ food: item, portion })}
+      />
+    );
+  } else {
+    body = (
+      <SearchStep
+        onPick={pick}
+        onCreateCustom={(name) => setCustomForm({ kind: 'create', name })}
+        onCreateRecipe={(name) => setRecipeFlow({ draft: draftFromRecipe(null, name), step: { kind: 'editor' } })}
+      />
+    );
+  }
 
   return (
     <Screen edges={['bottom']}>
       <Stack.Screen options={{ title }} />
-      {params.entryId && !existing ? (
-        <AppText variant="muted">This entry no longer exists.</AppText>
-      ) : customForm ? (
-        <CustomFoodForm
-          existing={customForm.kind === 'edit' ? customForm.food : null}
-          initialName={customForm.kind === 'create' ? customForm.name : ''}
-          onSaved={(saved) => {
-            // Continue to the portion step with the new definition (1 serving to start).
-            const item = customFoodToItem(saved);
-            setPicked({ food: item, portion: servingPortion(item) });
-            setCustomForm(null);
-          }}
-          onDeleted={() => {
-            setPicked(null);
-            setCustomForm(null);
-          }}
-          onCancel={() => setCustomForm(null)}
-        />
-      ) : food ? (
-        <PortionStep
-          food={food}
-          date={date}
-          initialMeal={meal}
-          existing={existing}
-          initialPortion={existing ? null : (picked?.portion ?? null)}
-          onBack={existing ? undefined : () => setPicked(null)}
-          onEditCustomFood={existing ? undefined : (f) => setCustomForm({ kind: 'edit', food: f })}
-        />
-      ) : (
-        <SearchStep
-          onPick={(f, portion) => setPicked({ food: f, portion })}
-          onCreateCustom={(name) => setCustomForm({ kind: 'create', name })}
-        />
-      )}
+      {body}
     </Screen>
   );
 }
@@ -139,14 +249,26 @@ function close() {
 function SearchStep({
   onPick,
   onCreateCustom,
+  onCreateRecipe,
+  forIngredient = false,
+  onCancel,
 }: {
   onPick: (f: FoodItem, portion?: Portion) => void;
   onCreateCustom: (name: string) => void;
+  onCreateRecipe: (name: string) => void;
+  /** Picking an ingredient for a recipe: no recipes (a recipe can't contain one). */
+  forIngredient?: boolean;
+  onCancel?: () => void;
 }) {
   const online = useOnline();
   const recent = useRecentFoods(20);
-  const { favorites } = useFavorites();
+  const { favorites: allFavorites } = useFavorites();
   const { customFoods } = useCustomFoods();
+  const { recipes } = useRecipes();
+  const favorites = useMemo(
+    () => (forIngredient ? allFavorites.filter((f) => f.food.source !== 'recipe') : allFavorites),
+    [allFavorites, forIngredient]
+  );
   const [query, setQuery] = useState('');
   const [search, setSearch] = useState<{ query: string; foods?: SearchResults; error?: string } | null>(null);
   const [offSearch, setOffSearch] = useState<{ query: string; foods?: FoodItem[]; error?: string } | null>(null);
@@ -258,15 +380,24 @@ function SearchStep({
   );
   const favoriteKeys = useMemo(() => new Set(favorites.map((f) => f.key)), [favorites]);
 
+  const recipeMatches = useMemo(
+    () => (forIngredient ? [] : filterRecipes(recipes, trimmed).map(recipeToItem)),
+    [recipes, trimmed, forIngredient]
+  );
+  const recipeKeys = useMemo(() => new Set(recipes.map((r) => `recipe:${r.id}`)), [recipes]);
+
   const recentMatches = useMemo(() => {
     const q = trimmed.toLowerCase();
     return recent.filter(
       (r) =>
         !favoriteKeys.has(foodKey(r.food)) &&
         !customKeys.has(foodKey(r.food)) &&
+        // Recipes show under My recipes with their current numbers; never offered as an ingredient.
+        !recipeKeys.has(foodKey(r.food)) &&
+        !(forIngredient && r.food.source === 'recipe') &&
         (!q || r.food.name.toLowerCase().includes(q) || r.food.brand?.toLowerCase().includes(q))
     );
-  }, [recent, trimmed, favoriteKeys, customKeys]);
+  }, [recent, trimmed, favoriteKeys, customKeys, recipeKeys, forIngredient]);
 
   if (scanning) {
     return (
@@ -291,24 +422,38 @@ function SearchStep({
         style={styles.noGrow}
       />
 
+      {forIngredient ? (
+        <AppText variant="small">Pick an ingredient, then enter how much went into the recipe.</AppText>
+      ) : null}
       <View style={styles.row}>
         {online ? (
           <Button
-            title="Scan barcode"
+            title="Scan"
             variant="secondary"
             onPress={() => setScanning(true)}
             style={styles.flex}
             icon={<ScanIcon />}
+            accessibilityLabel="Scan a barcode"
           />
         ) : null}
         <Button
-          title="Custom food"
+          title="Custom"
           variant="secondary"
           onPress={() => onCreateCustom(trimmed)}
           style={styles.flex}
-          icon={<CreateIcon />}
+          icon={<RowIcon name="create-outline" />}
           accessibilityLabel="Create a custom food"
         />
+        {forIngredient ? null : (
+          <Button
+            title="Recipe"
+            variant="secondary"
+            onPress={() => onCreateRecipe(trimmed)}
+            style={styles.flex}
+            icon={<RowIcon name="restaurant-outline" />}
+            accessibilityLabel="Create a recipe"
+          />
+        )}
       </View>
       {online ? null : (
         <Banner>
@@ -333,6 +478,15 @@ function SearchStep({
 
       {error ? <Banner>{error}</Banner> : null}
       {loading ? <ActivityIndicator style={{ marginVertical: Space.md }} /> : null}
+
+      {recipeMatches.length > 0 ? (
+        <Card style={styles.list}>
+          <AppText variant="label">My recipes</AppText>
+          {recipeMatches.map((f) => (
+            <FoodRow key={foodKey(f)} food={f} onPress={() => onPick(f, servingPortion(f))} />
+          ))}
+        </Card>
+      ) : null}
 
       {customMatches.length > 0 ? (
         <Card style={styles.list}>
@@ -397,6 +551,8 @@ function SearchStep({
           ))}
         </Card>
       ) : null}
+
+      {onCancel ? <Button title="Back to recipe" variant="secondary" onPress={onCancel} /> : null}
     </>
   );
 }
@@ -406,15 +562,15 @@ function ScanIcon() {
   return <Ionicons name="barcode-outline" size={20} color={c.primary} />;
 }
 
-function CreateIcon() {
+function RowIcon({ name }: { name: 'create-outline' | 'restaurant-outline' }) {
   const c = useColors();
-  return <Ionicons name="create-outline" size={20} color={c.primary} />;
+  return <Ionicons name={name} size={20} color={c.primary} />;
 }
 
 function FoodRow({ food, onPress, favorite }: { food: FoodItem; onPress: () => void; favorite?: boolean }) {
   const c = useColors();
   // Custom foods were entered per serving, so show them that way.
-  const perServing = food.source === 'custom' && food.servings[0] ? food.servings[0] : null;
+  const perServing = (food.source === 'custom' || food.source === 'recipe') && food.servings[0] ? food.servings[0] : null;
   const n = perServing ? nutritionForGrams(food.per100g, perServing.grams) : food.per100g;
   return (
     <Pressable
@@ -458,6 +614,8 @@ function PortionStep({
   initialPortion,
   onBack,
   onEditCustomFood,
+  onEditRecipe,
+  onRecipeChanged,
 }: {
   food: FoodItem;
   date: DateKey;
@@ -468,11 +626,21 @@ function PortionStep({
   onBack?: () => void;
   /** Opens the custom-food form for this food (when it's one of the user's custom foods). */
   onEditCustomFood?: (food: CustomFood) => void;
+  /** Opens the recipe editor (when this food is one of the user's recipes). */
+  onEditRecipe?: (recipe: Recipe) => void;
+  /** The recipe's batch weight was updated: continue with its new numbers and this portion. */
+  onRecipeChanged?: (food: FoodItem, portion: Portion) => void;
 }) {
   const c = useColors();
   const store = useEntriesStore();
   const { customFoods } = useCustomFoods();
   const customFood = food.source === 'custom' ? customFoods.find((f) => f.id === food.sourceId) : undefined;
+  const { recipes } = useRecipes();
+  const recipesStore = useRecipesStore();
+  const recipe = food.source === 'recipe' ? recipes.find((r) => r.id === food.sourceId) : undefined;
+  const [batchText, setBatchText] = useState(() => (recipe?.cookedGrams ? String(recipe.cookedGrams) : ''));
+  const [batchError, setBatchError] = useState<string | null>(null);
+  const [showIngredients, setShowIngredients] = useState(false);
   // Without a known weight, only servings make sense (grams/oz would use a made-up weight).
   const weightKnown = hasKnownWeight(food);
   const today = useToday();
@@ -532,6 +700,30 @@ function PortionStep({
         })
       : null;
   const n = entry ? entryNutrition(entry) : null;
+
+  /** Save this batch's cooked weight on the recipe and continue with the new numbers. */
+  const updateBatchWeight = () => {
+    if (!recipe || !onRecipeChanged) return;
+    const g = parseNumber(batchText);
+    if (g === null || g <= 0 || g > RECIPE_LIMITS.maxCookedGrams) {
+      setBatchError(`Enter the weight in grams (up to ${RECIPE_LIMITS.maxCookedGrams.toLocaleString('en-US')}).`);
+      return;
+    }
+    if (g === recipe.cookedGrams) return;
+    const updated: Recipe = { ...recipe, cookedGrams: g, updatedAt: new Date().toISOString() };
+    recipesStore.save(updated);
+    const item = recipeToItem(updated);
+    // Keep the amount the user entered, re-pointed at the recipe's new serving size.
+    const serving =
+      choice.unit === 'serving' ? (item.servings.find((sv) => sv.label === choice.serving.label) ?? item.servings[0] ?? null) : null;
+    const portion: Portion =
+      choice.unit === 'serving'
+        ? serving
+          ? { quantity: quantity ?? 1, unit: 'serving', serving }
+          : { quantity: 100, unit: 'g' }
+        : { quantity: quantity ?? 100, unit: choice.unit };
+    onRecipeChanged(item, portion);
+  };
 
   const switchUnit = (next: UnitChoice) => {
     // Keep the same amount of food when switching units.
@@ -620,6 +812,9 @@ function PortionStep({
             {customFood && onEditCustomFood ? (
               <ActionButton icon="create-outline" label="Edit food" onPress={() => onEditCustomFood(customFood)} />
             ) : null}
+            {recipe && onEditRecipe ? (
+              <ActionButton icon="create-outline" label="Edit recipe" onPress={() => onEditRecipe(recipe)} />
+            ) : null}
             {existing ? <ActionButton icon="copy-outline" label="Log today" onPress={logAgainToday} /> : null}
             {existing ? <ActionButton icon="trash-outline" label="Delete" tone="danger" onPress={remove} /> : null}
           </View>
@@ -638,6 +833,29 @@ function PortionStep({
           <AppText variant="small">Set your daily targets in Settings to see how this fits.</AppText>
         )}
       </Card>
+
+      {recipe && onRecipeChanged ? (
+        <Card>
+          <View style={styles.batchRow}>
+            <Field
+              label="This batch weighed"
+              value={batchText}
+              onChangeText={(t) => {
+                setBatchText(t);
+                setBatchError(null);
+              }}
+              keyboardType="decimal-pad"
+              suffix="g"
+              placeholder="Optional"
+              error={batchError}
+            />
+            <Button title="Update" variant="secondary" onPress={updateBatchWeight} />
+          </View>
+          <AppText variant="small">
+            Weigh the finished dish (minus the pot) so grams and ounces are a true share of this batch.
+          </AppText>
+        </Card>
+      ) : null}
 
       <Card>
         <Field
@@ -662,6 +880,10 @@ function PortionStep({
           <AppText variant="small">= {Math.round(entry.grams)} g</AppText>
         ) : null}
 
+        {food.recipe && entry ? (
+          <AppText variant="small">{Math.round(batchShare(food.recipe, entry.grams) * 100)}% of the batch</AppText>
+        ) : null}
+
         <AppText variant="label">Meal</AppText>
         <Segmented
           accessibilityLabel="Meal"
@@ -670,6 +892,33 @@ function PortionStep({
           options={MEALS.map((m) => ({ value: m, label: MEAL_LABELS[m] }))}
         />
       </Card>
+
+      {food.recipe && entry ? (
+        <Card style={styles.list}>
+          <Pressable
+            onPress={() => setShowIngredients((v) => !v)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showIngredients }}
+            style={styles.toggleRow}>
+            <AppText variant="label">Ingredients in this portion</AppText>
+            <Ionicons name={showIngredients ? 'chevron-up' : 'chevron-down'} size={18} color={c.muted} />
+          </Pressable>
+          {showIngredients
+            ? portionIngredients(food.recipe, entry.grams).map((ing, i) => (
+                <View key={`${i}-${ing.name}`} style={[styles.foodRow, { borderTopColor: c.border }]}>
+                  <View style={styles.flex}>
+                    <AppText numberOfLines={2}>{ing.name}</AppText>
+                    <AppText variant="small">
+                      {ing.amount} in the batch · P {Math.round(ing.nutrition.protein)} · F {Math.round(ing.nutrition.fat)} · C{' '}
+                      {Math.round(ing.nutrition.carbs)}
+                    </AppText>
+                  </View>
+                  <AppText>{formatKcal(ing.nutrition.calories)}</AppText>
+                </View>
+              ))
+            : null}
+        </Card>
+      ) : null}
 
       <Button title={existing ? 'Save changes' : 'Add to log'} onPress={save} disabled={!entry} />
     </>
@@ -680,6 +929,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: Space.sm, alignItems: 'flex-start' },
   flex: { flex: 1 },
   noGrow: { flexGrow: 0, flexBasis: 'auto' },
+  batchRow: { flexDirection: 'row', gap: Space.sm, alignItems: 'flex-end' },
+  toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: MIN_TOUCH },
   list: { gap: 0 },
   foodRow: {
     flexDirection: 'row',

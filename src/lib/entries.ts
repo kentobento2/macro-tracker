@@ -2,6 +2,7 @@
 
 import type { DateKey } from './dates';
 import { foodKey, type FoodItem, type FoodSource } from './foods';
+import type { RecipeSnapshot } from './recipes';
 import { averageNutrition, nutritionForGrams, sumNutrition, type Nutrition } from './macros';
 import { portionToGrams, type PortionUnit, type Serving } from './units';
 
@@ -34,6 +35,8 @@ export type FoodEntry = {
   grams: number;
   per100g: Nutrition; // snapshot from the source at log time
   createdAt: string; // ISO timestamp
+  /** For recipes: the batch's ingredient breakdown at log time. */
+  recipe?: RecipeSnapshot | null;
 };
 
 export type Portion = {
@@ -68,6 +71,7 @@ export function buildEntry(args: {
     grams: portionToGrams(portion.quantity, portion.unit, serving),
     per100g: food.per100g,
     createdAt,
+    ...(food.recipe ? { recipe: food.recipe } : {}),
   };
 }
 
@@ -123,6 +127,7 @@ export function foodFromEntry(e: FoodEntry): FoodItem {
     per100g: e.per100g,
     servings,
     caloriesDerived: false,
+    ...(e.recipe ? { recipe: e.recipe } : {}),
   };
 }
 

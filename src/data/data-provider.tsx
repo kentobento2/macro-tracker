@@ -17,6 +17,7 @@ import { CustomFoodsStore } from './custom-foods-store';
 import { EntriesStore } from './entries-store';
 import { FavoritesStore } from './favorites-store';
 import { ProfileStore } from './profile-store';
+import { RecipesStore } from './recipes-store';
 import { removeKeys, userKeyPrefix } from './storage';
 import { WeightStore } from './weight-store';
 
@@ -26,6 +27,7 @@ type Stores = {
   weights: WeightStore;
   favorites: FavoritesStore;
   customFoods: CustomFoodsStore;
+  recipes: RecipesStore;
   userId: string;
 };
 
@@ -42,6 +44,7 @@ export function DataProvider({ userId, children }: PropsWithChildren<{ userId: s
       weights: new WeightStore(userId),
       favorites: new FavoritesStore(userId),
       customFoods: new CustomFoodsStore(userId),
+      recipes: new RecipesStore(userId),
       userId,
     }),
     [userId]
@@ -53,6 +56,7 @@ export function DataProvider({ userId, children }: PropsWithChildren<{ userId: s
     void stores.weights.init();
     void stores.favorites.init();
     void stores.customFoods.init();
+    void stores.recipes.init();
   }, [stores]);
 
   // Retry pending changes whenever we might be back online.
@@ -64,6 +68,7 @@ export function DataProvider({ userId, children }: PropsWithChildren<{ userId: s
     void stores.weights.flush();
     void stores.favorites.flush();
     void stores.customFoods.flush();
+    void stores.recipes.flush();
   }, [online, stores]);
 
   useEffect(() => {
@@ -74,6 +79,7 @@ export function DataProvider({ userId, children }: PropsWithChildren<{ userId: s
         void stores.weights.flush();
         void stores.favorites.flush();
         void stores.customFoods.flush();
+        void stores.recipes.flush();
       }
     });
     return () => sub.remove();
@@ -170,14 +176,16 @@ export function useSyncStatus() {
   const weights = useWeightState();
   const favorites = useFavoritesState();
   const customFoods = useCustomFoodsState();
+  const recipes = useRecipesState();
   return {
     pendingCount:
       entries.queue.length +
       (profile.pending ? 1 : 0) +
       weights.queue.length +
       favorites.queue.length +
-      customFoods.queue.length,
-    syncError: entries.syncError ?? profile.syncError ?? weights.syncError ?? favorites.syncError ?? customFoods.syncError,
+      customFoods.queue.length +
+      recipes.queue.length,
+    syncError: entries.syncError ?? profile.syncError ?? weights.syncError ?? favorites.syncError ?? customFoods.syncError ?? recipes.syncError,
   };
 }
 
@@ -239,6 +247,26 @@ export function useCustomFoods() {
     if (online) void store.refresh();
   }, [store, online]);
   return { customFoods: view, ready };
+}
+
+export function useRecipesStore() {
+  return useStores().recipes;
+}
+
+function useRecipesState() {
+  const store = useRecipesStore();
+  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+}
+
+/** The user's recipes (pending changes included), sorted by name. Refreshed on mount and when back online. */
+export function useRecipes() {
+  const store = useRecipesStore();
+  const { view, ready } = useRecipesState();
+  const online = useOnline();
+  useEffect(() => {
+    if (online) void store.refresh();
+  }, [store, online]);
+  return { recipes: view, ready };
 }
 
 export function useProfileStore() {

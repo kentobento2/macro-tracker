@@ -14,18 +14,20 @@ import { addDays, type DateKey } from '../lib/dates';
 import { recentFoods } from '../lib/entries';
 import { dedupeFoods, foodKey, normalizeOffProduct, normalizeUsdaFood, type FoodItem } from '../lib/foods';
 import type { Favorite } from '../lib/favorites';
+import { recipeToItem, type Recipe } from '../lib/recipes';
 import type { UserStore } from './store';
 
 export type MatchSource = 'saved' | 'usda' | 'off';
 
 export const SOURCE_LABELS: Record<MatchSource, string> = {
-  saved: 'Saved (your custom foods, favorites and recent foods)',
+  saved: 'Saved (your recipes, custom foods, favorites and recent foods)',
   usda: 'USDA FoodData Central',
   off: 'Open Food Facts (community data)',
 };
 
 export type SavedFoods = {
   customFoods: CustomFood[];
+  recipes: Recipe[];
   favorites: Favorite[];
   /** Distinct foods from recent logs, newest first, with the last entry for each. */
   recent: ReturnType<typeof recentFoods>;
@@ -33,10 +35,11 @@ export type SavedFoods = {
   byKey: Map<string, FoodItem>;
 };
 
-/** Custom foods, favorites, and foods logged in the last 90 days. */
+/** Custom foods, recipes, favorites, and foods logged in the last 90 days. */
 export async function loadSavedFoods(store: UserStore, today: DateKey): Promise<SavedFoods> {
-  const [customFoods, favorites, entries] = await Promise.all([
+  const [customFoods, recipes, favorites, entries] = await Promise.all([
     store.customFoods(),
+    store.recipes(),
     store.favorites(),
     store.entriesBetween(addDays(today, -90), today),
   ]);
@@ -48,7 +51,11 @@ export async function loadSavedFoods(store: UserStore, today: DateKey): Promise<
     const item = customFoodToItem(c);
     byKey.set(foodKey(item), item);
   }
-  return { customFoods, favorites, recent, byKey };
+  for (const r of recipes) {
+    const item = recipeToItem(r);
+    byKey.set(foodKey(item), item);
+  }
+  return { customFoods, recipes, favorites, recent, byKey };
 }
 
 export type ExternalResults = { usda: FoodItem[]; off: FoodItem[]; problems: string[] };
