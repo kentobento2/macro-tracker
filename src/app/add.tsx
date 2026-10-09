@@ -30,7 +30,14 @@ import {
   useRecentFoods,
   useToday,
 } from '@/data/data-provider';
-import { FoodLookupError, lookupBarcode, searchFoods, type SearchResults } from '@/data/food-api';
+import {
+  FoodLookupError,
+  lookupBarcode,
+  searchFoods,
+  searchOpenFoodFacts,
+  withServings,
+  type SearchResults,
+} from '@/data/food-api';
 import { isDateKey, type DateKey } from '@/lib/dates';
 import {
   buildEntry,
@@ -103,6 +110,7 @@ function SearchStep({ onPick }: { onPick: (f: FoodItem, portion?: Portion) => vo
   const { favorites } = useFavorites();
   const [query, setQuery] = useState('');
   const [search, setSearch] = useState<{ query: string; foods?: SearchResults; error?: string } | null>(null);
+  const [offSearch, setOffSearch] = useState<{ query: string; foods?: FoodItem[]; error?: string } | null>(null);
   const [scanning, setScanning] = useState(false);
   const [barcode, setBarcode] = useState('');
   const [lookupState, setLookupState] = useState<{ loading: boolean; error: string | null }>({
@@ -117,6 +125,10 @@ function SearchStep({ onPick }: { onPick: (f: FoodItem, portion?: Portion) => vo
   const results = current?.foods ?? null;
   const loading = (searchActive && !current) || lookupState.loading;
   const error = current?.error ?? lookupState.error;
+  // Open Food Facts loads separately (it's slower and more rate-limited) so USDA results show first.
+  const offCurrent = searchActive && offSearch?.query === trimmed ? offSearch : null;
+  const offFoods = offCurrent?.foods ?? [];
+  const offLoading = searchActive && !offCurrent;
 
   // Debounced USDA search.
   useEffect(() => {
@@ -137,6 +149,42 @@ function SearchStep({ onPick }: { onPick: (f: FoodItem, portion?: Portion) => vo
       clearTimeout(timer);
     };
   }, [trimmed, searchActive]);
+
+  // Debounced Open Food Facts search (a little longer: OFF allows ~10 searches a minute).
+  useEffect(() => {
+    if (!searchActive) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const foods = await searchOpenFoodFacts(trimmed);
+        if (!cancelled) setOffSearch({ query: trimmed, foods });
+      } catch (e) {
+        if (!cancelled) {
+          setOffSearch({
+            query: trimmed,
+            error:
+              e instanceof FoodLookupError && e.kind === 'rate_limited'
+                ? 'Open Food Facts is busy right now. Try again in a minute.'
+                : e instanceof FoodLookupError && e.kind === 'offline'
+                  ? e.message
+                  : 'Open Food Facts search failed.',
+          });
+        }
+      }
+    }, 700);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [trimmed, searchActive]);
+
+  /** Open Food Facts search hits lack serving sizes; fetch the full product before opening it. */
+  const pickOff = async (food: FoodItem) => {
+    setLookupState({ loading: true, error: null });
+    const full = await withServings(food);
+    setLookupState({ loading: false, error: null });
+    onPick(full);
+  };
 
   const lookup = async (code: string) => {
     setScanning(false);
@@ -224,7 +272,7 @@ function SearchStep({ onPick }: { onPick: (f: FoodItem, portion?: Portion) => vo
       {error ? <Banner>{error}</Banner> : null}
       {loading ? <ActivityIndicator style={{ marginVertical: Space.md }} /> : null}
 
-      {results && results.whole.length + results.branded.length === 0 ? (
+      {results && results.whole.length + results.branded.length === 0 && offCurrent && offFoods.length === 0 ? (
         <Card>
           <AppText variant="muted">No matches. Try a simpler term.</AppText>
         </Card>
@@ -242,6 +290,16 @@ function SearchStep({ onPick }: { onPick: (f: FoodItem, portion?: Portion) => vo
           <AppText variant="label">Brands & packaged · USDA</AppText>
           {results.branded.map((f) => (
             <FoodRow key={foodKey(f)} food={f} onPress={() => onPick(f)} />
+          ))}
+        </Card>
+      ) : null}
+      {results && (offLoading || offFoods.length > 0 || offCurrent?.error) ? (
+        <Card style={styles.list}>
+          <AppText variant="label">Community · Open Food Facts</AppText>
+          {offLoading ? <ActivityIndicator style={{ marginVertical: Space.sm }} /> : null}
+          {offCurrent?.error ? <AppText variant="small">{offCurrent.error}</AppText> : null}
+          {offFoods.map((f) => (
+            <FoodRow key={foodKey(f)} food={f} onPress={() => pickOff(f)} />
           ))}
         </Card>
       ) : null}

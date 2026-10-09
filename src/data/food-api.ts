@@ -2,7 +2,14 @@
 
 import { FunctionsHttpError } from '@supabase/supabase-js';
 
-import { normalizeOffProduct, normalizeUsdaFood, type FoodItem, type OffProduct, type UsdaFood } from '@/lib/foods';
+import {
+  dedupeFoods,
+  normalizeOffProduct,
+  normalizeUsdaFood,
+  type FoodItem,
+  type OffProduct,
+  type UsdaFood,
+} from '@/lib/foods';
 import { supabase } from '@/lib/supabase';
 
 export class FoodLookupError extends Error {
@@ -31,7 +38,7 @@ async function invoke<T>(body: object): Promise<T> {
 export type SearchResults = { whole: FoodItem[]; branded: FoodItem[] };
 
 const normalizeAll = (list: UsdaFood[] | undefined) =>
-  (list ?? []).map(normalizeUsdaFood).filter((f): f is FoodItem => f !== null);
+  dedupeFoods((list ?? []).map(normalizeUsdaFood).filter((f): f is FoodItem => f !== null));
 
 /** USDA whole foods (Foundation / SR Legacy / Survey) and USDA branded products, as separate lists. */
 export async function searchFoods(query: string): Promise<SearchResults> {
@@ -43,4 +50,28 @@ export async function searchFoods(query: string): Promise<SearchResults> {
 export async function lookupBarcode(code: string): Promise<FoodItem | null> {
   const { product } = await invoke<{ product: OffProduct | null }>({ type: 'barcode', code });
   return product ? normalizeOffProduct(product, code) : null;
+}
+
+/** Open Food Facts name search (community data). Results lack serving sizes until opened with `withServings`. */
+export async function searchOpenFoodFacts(query: string): Promise<FoodItem[]> {
+  const { products } = await invoke<{ products: OffProduct[] }>({ type: 'search_off', query });
+  return dedupeFoods(
+    products.flatMap((p) => {
+      const food = p.code ? normalizeOffProduct(p, p.code) : null;
+      return food ? [food] : [];
+    })
+  );
+}
+
+/**
+ * For an Open Food Facts search result, fetch the full product (which has serving sizes and the latest
+ * nutrition). Falls back to the search data if the lookup fails, so the food can still be logged by weight.
+ */
+export async function withServings(food: FoodItem): Promise<FoodItem> {
+  if (food.source !== 'off' || !food.sourceId || food.servings.length > 0) return food;
+  try {
+    return (await lookupBarcode(food.sourceId)) ?? food;
+  } catch {
+    return food;
+  }
 }

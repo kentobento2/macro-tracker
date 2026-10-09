@@ -7,7 +7,7 @@ Expo (TypeScript, Expo Router) app shipped primarily as a mobile-first PWA on we
 ## Project rules
 
 ### Macro math lives in its own tested module
-- All nutrition math lives in pure modules under `src/lib/`: `macros.ts` (totals, scaling), `units.ts` (g/oz/servings, lb/ft), `targets.ts` (BMR/TDEE/macro targets), `entries.ts` (entry totals, weekly averages), `foods.ts` (normalizing USDA / Open Food Facts), `settings-form.ts` (form parsing and unit conversion), `dates.ts` / `calendar.ts` (date keys, Mon–Sun weeks, month grids), `bodyweight.ts` (weekly/rolling averages, week-over-week, ranges, weight queue; weights are canonical kg), `weight-chart.ts` (chart geometry: scaling, nice ticks, gap-aware average line), `favorites.ts` (favorite = food snapshot + default portion, offline queue; keyed by `foodKey` from `foods.ts`).
+- All nutrition math lives in pure modules under `src/lib/`: `macros.ts` (totals, scaling), `units.ts` (g/oz/servings, lb/ft), `targets.ts` (BMR/TDEE/macro targets), `entries.ts` (entry totals, weekly averages), `foods.ts` (normalizing USDA whole + branded / Open Food Facts, name tidying, dedupe, plausibility filter), `settings-form.ts` (form parsing and unit conversion), `dates.ts` / `calendar.ts` (date keys, Mon–Sun weeks, month grids), `bodyweight.ts` (weekly/rolling averages, week-over-week, ranges, weight queue; weights are canonical kg), `weight-chart.ts` (chart geometry: scaling, nice ticks, gap-aware average line), `favorites.ts` (favorite = food snapshot + default portion, offline queue; keyed by `foodKey` from `foods.ts`).
 - These modules stay pure: no React, no Supabase, no I/O, no `Date.now()`. Inputs in, numbers out.
 - Screens and components call into them; they never inline macro arithmetic. The Edge Function only proxies and trims data — no math there.
 - Macro math is done in code, never estimated by AI. Missing calories are derived from macros (4/4/9) and flagged in the UI.
@@ -36,7 +36,7 @@ Expo (TypeScript, Expo Router) app shipped primarily as a mobile-first PWA on we
 - `src/data/` — I/O: auth, offline-first stores (`entries-store.ts`, `profile-store.ts`, `weight-store.ts`, `favorites-store.ts`), the food API client, and React hooks in `data-provider.tsx`.
 - `src/components/` — UI. `ui.tsx` has the shared primitives; `barcode-scanner.web.tsx` is the camera scanner (web only); `weight-chart.tsx` draws with react-native-svg.
 - `supabase/migrations/` — schema history. Every table has RLS restricting rows to their owner; keep it that way.
-- `supabase/functions/food-lookup/` — Edge Function proxying USDA FoodData Central (search) and Open Food Facts (barcodes). Reads the `FDC_API_KEY` secret. Deno code, excluded from the app's tsconfig/eslint.
+- `supabase/functions/food-lookup/` — Edge Function proxying USDA FoodData Central (`search`: whole foods + branded, branded matches all words first) and Open Food Facts (`search_off`: name search via search.openfoodfacts.org, results lack servings so the app fetches the product on pick; `barcode`: product lookup). Open Food Facts is crowd-sourced and rate-limited (~10 searches/min); the app shows its section separately and degrades to "busy". Reads the `FDC_API_KEY` secret. Deno code, excluded from the app's tsconfig/eslint.
 - `public/` — static web files: `manifest.json`, `sw.js`, icons.
 
 ## Offline model

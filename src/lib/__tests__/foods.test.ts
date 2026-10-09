@@ -1,4 +1,4 @@
-import { normalizeOffProduct, normalizeUsdaFood, tidyName } from '../foods';
+import { dedupeFoods, isPlausiblePer100g, normalizeOffProduct, normalizeUsdaFood, tidyName } from '../foods';
 
 describe('normalizeUsdaFood', () => {
   // Trimmed from a real FoodData Central search result (Survey FNDDS 2709224).
@@ -177,5 +177,88 @@ describe('tidyName', () => {
     expect(tidyName('Banana, raw')).toBe('Banana, raw');
     expect(tidyName('  Rice   cakes ')).toBe('Rice cakes');
     expect(tidyName('100%')).toBe('100%');
+  });
+});
+
+describe('branded serving labels (from real USDA records)', () => {
+  const base = {
+    fdcId: 1,
+    description: 'Cheerios Cereal',
+    dataType: 'Branded',
+    brandName: 'Cheerios',
+    servingSizeUnit: 'GRM',
+    foodNutrients: [{ nutrientId: 1008, unitName: 'KCAL', value: 359 }],
+  };
+  const label = (household: string | undefined, servingSize: number) =>
+    normalizeUsdaFood({ ...base, householdServingFullText: household, servingSize })!.servings[0].label;
+
+  it('does not repeat a weight the label already states', () => {
+    expect(label('1 box (17g)', 17)).toBe('1 box (17g)');
+    expect(label('30 grm', 30)).toBe('30 grm');
+  });
+  it('adds the weight to quantity-only text', () => {
+    expect(label('1 1/2 cup', 39)).toBe('1 1/2 cup (39 g)');
+  });
+  it('replaces household text with no quantity', () => {
+    expect(label('Frosted Cheerios', 36)).toBe('1 serving (36 g)');
+  });
+});
+
+describe('tidyName hyphen gaps', () => {
+  it('closes stray gaps after hyphens but keeps spaced dashes', () => {
+    expect(tidyName('Chobani Plain Low- Fat Greek Yogurt')).toBe('Chobani Plain Low-Fat Greek Yogurt');
+    expect(tidyName('Watermelon, Blended - 5.3 oz')).toBe('Watermelon, Blended - 5.3 oz');
+  });
+});
+
+describe('normalizeOffProduct names', () => {
+  it('prefers the English name', () => {
+    const p = normalizeOffProduct(
+      { code: '1', product_name: 'Barre protéinée', product_name_en: 'Protein bar', nutriments: { 'energy-kcal_100g': 350 } },
+      '1'
+    );
+    expect(p?.name).toBe('Protein bar');
+  });
+});
+
+describe('isPlausiblePer100g', () => {
+  it('accepts real foods, including pure fat', () => {
+    expect(isPlausiblePer100g({ calories: 884, protein: 0, carbs: 0, fat: 100 })).toBe(true); // olive oil
+    expect(isPlausiblePer100g({ calories: 359, protein: 12.8, carbs: 74.4, fat: 6.41 })).toBe(true);
+  });
+  it('rejects package-total values entered as per 100 g', () => {
+    // Real Open Food Facts record: Perkier Cacao & Cashew Quinoa Bar.
+    expect(isPlausiblePer100g({ calories: 1170, protein: 42.4, carbs: 114, fat: 53.9 })).toBe(false);
+    expect(isPlausiblePer100g({ calories: 400, protein: 60, carbs: 60, fat: 0 })).toBe(false);
+  });
+  it('makes the normalizers skip impossible records', () => {
+    expect(
+      normalizeOffProduct(
+        { code: '1', product_name: 'Perkier bar', nutriments: { 'energy-kcal_100g': 1170, proteins_100g: 42.4, carbohydrates_100g: 114, fat_100g: 53.9 } },
+        '1'
+      )
+    ).toBeNull();
+  });
+});
+
+describe('tidyName repeated parts (real USDA names)', () => {
+  it('drops a part that repeats the previous one', () => {
+    expect(tidyName('Quest, Protein Chips, Salt & Vinegar, Salt & Vinegar')).toBe('Quest, Protein Chips, Salt & Vinegar');
+    expect(tidyName('Bar, Bar')).toBe('Bar');
+    expect(tidyName('Milk Chocolate, Milk')).toBe('Milk Chocolate, Milk');
+  });
+});
+
+describe('dedupeFoods', () => {
+  const food = normalizeUsdaFood({
+    fdcId: 1,
+    description: 'Sea Quest Flavored Egg Hunt, Sea Quest',
+    brandName: 'Bee',
+    foodNutrients: [{ nutrientId: 1008, unitName: 'KCAL', value: 333 }, { nutrientId: 1005, unitName: 'G', value: 88.9 }],
+  })!;
+  it('removes identical records but keeps different ones', () => {
+    const twin = { ...food, sourceId: '2' };
+    const other = { ...food, sourceId: '3', per100g: { ...food.per100g, calories: 340 } };
+    expect(dedupeFoods([food, twin, other]).map((f) => f.sourceId)).toEqual(['1', '3']);
   });
 });

@@ -18,6 +18,15 @@ export type FoodItem = {
 
 const KJ_PER_KCAL = 4.184;
 
+/**
+ * Rejects physically impossible per-100 g values, usually whole-package or per-serving numbers entered as
+ * per 100 g in crowd-sourced data. Pure fat is ~900 kcal/100 g, and macros can't exceed 100 g per 100 g
+ * (small allowance for rounding).
+ */
+export function isPlausiblePer100g(n: Nutrition): boolean {
+  return n.calories <= 900 && n.protein + n.carbs + n.fat <= 105;
+}
+
 const num = (v: unknown): number | null => {
   const n = typeof v === 'string' ? Number(v) : v;
   return typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : null;
@@ -48,7 +57,10 @@ export type UsdaFood = {
 
 /** Some sources shout ("GREEK NONFAT YOGURT"); turn all-caps names into title case. Mixed case is left alone. */
 export function tidyName(name: string): string {
-  const t = name.trim().replace(/\s+/g, ' ');
+  // Also close stray gaps after hyphens that appear in USDA data ("Low- Fat" -> "Low-Fat"), and drop
+  // comma-separated parts that repeat the one before ("Chips, Salt & Vinegar, Salt & Vinegar", "Bar, Bar").
+  const parts = name.trim().replace(/\s+/g, ' ').replace(/(\w)- (\w)/g, '$1-$2').split(/\s*,\s*/);
+  const t = parts.filter((p, i) => i === 0 || p.toLowerCase() !== parts[i - 1].toLowerCase()).join(', ');
   if (!/[A-Z]/.test(t) || t !== t.toUpperCase()) return t;
   return t.toLowerCase().replace(/(^|[\s(\-/&,])([a-z])/g, (_m, sep: string, ch: string) => sep + ch.toUpperCase());
 }
@@ -86,9 +98,16 @@ export function normalizeUsdaFood(f: UsdaFood): FoodItem | null {
   // Branded: the label serving, e.g. "1 cup (227 g)" or "1 serving (150 g)".
   const servingGrams = num(f.servingSize);
   if (servingGrams && GRAM_UNITS.has((f.servingSizeUnit ?? '').toUpperCase())) {
-    const household = f.householdServingFullText?.trim();
+    const rawHousehold = (f.householdServingFullText ?? '').trim().replace(/\s+/g, ' ');
+    const household = rawHousehold === rawHousehold.toUpperCase() ? rawHousehold.toLowerCase() : rawHousehold;
     const amount = `${Math.round(servingGrams * 10) / 10} g`;
-    const label = household ? `${household.toLowerCase()} (${amount})` : `1 serving (${amount})`;
+    // Household text without a quantity ("Frosted Cheerios") isn't a serving description; text that already
+    // states the weight ("1 box (17g)", "30 grm") shouldn't get it twice.
+    const label = !/\d/.test(household)
+      ? `1 serving (${amount})`
+      : /\d\s*(g|gm|grm|grams?)\b/i.test(household)
+        ? household
+        : `${household} (${amount})`;
     seen.add(label);
     servings.push({ label, grams: servingGrams });
   }
@@ -101,6 +120,7 @@ export function normalizeUsdaFood(f: UsdaFood): FoodItem | null {
   }
 
   const { calories, caloriesDerived } = resolveCalories(kcal, { protein, fat, carbs });
+  if (!isPlausiblePer100g({ calories, protein, carbs, fat })) return null;
   return {
     source: 'usda',
     sourceId: String(f.fdcId),
@@ -117,6 +137,7 @@ export function normalizeUsdaFood(f: UsdaFood): FoodItem | null {
 export type OffProduct = {
   code?: string;
   product_name?: string;
+  product_name_en?: string;
   brands?: string;
   serving_size?: string;
   serving_quantity?: number | string;
@@ -137,6 +158,7 @@ export function normalizeOffProduct(p: OffProduct, fallbackCode: string): FoodIt
 
   const macros = { protein: protein ?? 0, carbs: carbs ?? 0, fat: fat ?? 0 };
   const { calories, caloriesDerived } = resolveCalories(kcal, macros);
+  if (!isPlausiblePer100g({ ...macros, calories })) return null;
 
   const servings: Serving[] = [];
   const servingGrams = num(p.serving_quantity);
@@ -149,7 +171,7 @@ export function normalizeOffProduct(p: OffProduct, fallbackCode: string): FoodIt
   return {
     source: 'off',
     sourceId: p.code ?? fallbackCode,
-    name: p.product_name?.trim() || 'Unnamed product',
+    name: tidyName(p.product_name_en || p.product_name || '') || 'Unnamed product',
     brand,
     per100g: { ...macros, calories },
     servings,
@@ -160,4 +182,21 @@ export function normalizeOffProduct(p: OffProduct, fallbackCode: string): FoodIt
 /** Stable identity for a food across logs and favorites: "usda:2709224", "off:0737…", or "name:banana". */
 export function foodKey(food: Pick<FoodItem, 'source' | 'sourceId' | 'name'>): string {
   return food.sourceId ? `${food.source}:${food.sourceId}` : `name:${food.name.trim().toLowerCase()}`;
+}
+
+/**
+ * Drop exact duplicates within a results list (same name, brand and per-100 g values). USDA often has
+ * several records for the same product.
+ */
+export function dedupeFoods(list: readonly FoodItem[]): FoodItem[] {
+  const seen = new Set<string>();
+  return list.filter((f) => {
+    const n = f.per100g;
+    const key = [f.name.toLowerCase(), (f.brand ?? '').toLowerCase(), n.calories, n.protein, n.carbs, n.fat]
+      .map((v) => (typeof v === 'number' ? Math.round(v * 10) / 10 : v))
+      .join('|');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
