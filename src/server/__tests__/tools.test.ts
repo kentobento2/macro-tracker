@@ -149,8 +149,9 @@ describe('preview_meal', () => {
   });
 
   it('searches with the preparation so the database surfaces that version', async () => {
-    await call('preview_meal', { items: [{ food_name: 'chicken breast', preparation: 'grilled', quantity: 6, unit: 'oz' }] });
-    expect(foods.calls).toContain('usda:chicken breast grilled');
+    // (Chicken breast is user A's favorite, so use a food that isn't saved.)
+    await call('preview_meal', { items: [{ food_name: 'egg', preparation: 'hard-boiled', quantity: 2, unit: 'large' }] });
+    expect(foods.calls).toContain('usda:egg hard-boiled');
   });
 
   it('among equally good matches, picks one that has the unit the user said', async () => {
