@@ -4,12 +4,13 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { FoodCalendarSheet } from '@/components/calendar-sheet';
+import { GettingStarted } from '@/components/getting-started';
 import { DayLog } from '@/components/day-log';
 import { SyncBanner } from '@/components/sync-banner';
 import { AppText, Button, Card, Screen } from '@/components/ui';
 import { WeekSummary } from '@/components/week-summary';
 import { MIN_TOUCH, Radius, Space, useColors } from '@/constants/theme';
-import { useProfileState, useToday } from '@/data/data-provider';
+import { useOnboardingPrefs, useProfileState, useToday } from '@/data/data-provider';
 import { addDays, formatDayLabel, fromDateKey, isDateKey, type DateKey } from '@/lib/dates';
 
 /** The food log for any day. The day lives in the URL (?date=YYYY-MM-DD) so reloads and links keep it. */
@@ -21,6 +22,9 @@ export default function LogScreen() {
   const isToday = date === today;
   const { ready, profile } = useProfileState();
   const [calendarOpen, setCalendarOpen] = useState(false);
+  // The checklist covers targets; once it's hidden, keep the standalone targets prompt.
+  const onboarding = useOnboardingPrefs();
+  const onboardingHidden = onboarding.ready && onboarding.prefs.dismissed;
 
   const goTo = (d: DateKey) => router.setParams({ date: d >= today ? undefined : d });
 
@@ -73,7 +77,8 @@ export default function LogScreen() {
 
       <SyncBanner />
 
-      {ready && !profile?.targets ? (
+      <GettingStarted onboarding={onboarding} />
+      {ready && !profile?.targets && onboardingHidden ? (
         <Card>
           <AppText variant="heading">Set your targets</AppText>
           <AppText variant="muted">

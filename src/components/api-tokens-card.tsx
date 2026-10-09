@@ -5,6 +5,7 @@ import * as Crypto from 'expo-crypto';
 import { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { MCP_URL } from '@/constants/app';
 import { MIN_TOUCH, Radius, Space, useColors } from '@/constants/theme';
 import { useOnline } from '@/data/data-provider';
 import {
@@ -27,7 +28,6 @@ type TokenRow = {
   revoked_at: string | null;
 };
 
-const MCP_URL = 'https://macro-tracker-rho-two.vercel.app/api/mcp';
 
 const fetchTokens = () =>
   supabase

@@ -46,6 +46,8 @@ function RootNavigator() {
       </Stack.Protected>
       {/* Reachable signed in or out: it handles its own sign-in so it can return to the assistant. */}
       <Stack.Screen name="oauth/consent" />
+      {/* Public quick-start guide: send new users the link before they sign in. */}
+      <Stack.Screen name="guide" />
     </Stack>
   );
 

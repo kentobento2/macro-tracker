@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -266,6 +267,7 @@ export default function SettingsScreen() {
       <Card>
         <AppText variant="heading">Account</AppText>
         <AppText variant="muted">Signed in as {session?.user.email ?? 'unknown'}</AppText>
+        <Button title="Quick-start guide" variant="ghost" onPress={() => router.push('/guide')} />
         {confirmSignOut ? (
           <>
             {pendingCount ? (

@@ -18,7 +18,7 @@ import { EntriesStore } from './entries-store';
 import { FavoritesStore } from './favorites-store';
 import { ProfileStore } from './profile-store';
 import { RecipesStore } from './recipes-store';
-import { removeKeys, userKeyPrefix } from './storage';
+import { readJSON, removeKeys, userKeyPrefix, writeJSON } from './storage';
 import { WeightStore } from './weight-store';
 
 type Stores = {
@@ -279,6 +279,31 @@ export function useProfileState() {
 }
 
 /** Clears this user's data from the device. Call before signing out. */
+export type OnboardingPrefs = { dismissed: boolean; assistantSeen: boolean };
+
+/** This user's "Get started" checklist choices, kept on the device. ready is false until loaded. */
+export function useOnboardingPrefs() {
+  const { userId } = useStores();
+  const key = `${userKeyPrefix(userId)}onboarding`;
+  const [prefs, setPrefs] = useState<OnboardingPrefs | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    readJSON<OnboardingPrefs>(key, { dismissed: false, assistantSeen: false }).then((p) => {
+      if (!cancelled) setPrefs(p);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [key]);
+  const update = (patch: Partial<OnboardingPrefs>) =>
+    setPrefs((p) => {
+      const next = { dismissed: false, assistantSeen: false, ...p, ...patch };
+      void writeJSON(key, next);
+      return next;
+    });
+  return { ready: prefs !== null, prefs: prefs ?? { dismissed: false, assistantSeen: false }, update };
+}
+
 export function useClearLocalData() {
   const { userId } = useStores();
   return () => removeKeys(userKeyPrefix(userId));
