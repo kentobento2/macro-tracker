@@ -148,6 +148,16 @@ describe('preview_meal', () => {
     expect(r.items[0].message).toMatch(/"1 banana", "1 cup"/);
   });
 
+  it('among equally good matches, picks one that has the unit the user said', async () => {
+    const noServings = usda(2710788, 'Rice, white, cooked, as ingredient', 130, 2.5, 29, 0.4);
+    const withCup = usda(2708403, 'Rice, white, cooked, NS as to fat', 130, 2.5, 29, 0.4, [['1 cup', 158]]);
+    const catalog = [noServings, withCup];
+    foods.searchExternal = async () => ({ usda: catalog, off: [], problems: [] });
+    foods.fetchByRef = async (ref) => catalog.find((f) => foodKey(f) === ref) ?? null;
+    const r = data(await call('preview_meal', { items: [{ food_name: 'white rice', quantity: 1, unit: 'cup', preparation: 'cooked' }] }));
+    expect(r.items[0]).toMatchObject({ status: 'matched', food_ref: 'usda:2708403', grams: 158 });
+  });
+
   it('rejects zero, negative and absurd quantities', async () => {
     expect(schemaRejects('preview_meal', { items: [{ food_name: 'banana', quantity: 0, unit: 'g' }] })).toBe(true);
     expect(schemaRejects('preview_meal', { items: [{ food_name: 'banana', quantity: -2, unit: 'g' }] })).toBe(true);

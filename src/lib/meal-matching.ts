@@ -169,7 +169,7 @@ export function nameTokens(s: string): string[] {
  */
 const NEUTRAL = new Set([
   'whole', 'raw', 'fresh', 'cooked', 'plain', 'regular', 'unprepared', 'prepared', 'ns', 'nfs', 'form', 'type',
-  'to', 'as', 'from', 'meat', 'only', 'boneless', 'skinless', 'skin', 'not', 'eaten', 'without', 'added',
+  'to', 'as', 'from', 'meat', 'only', 'boneless', 'skinless', 'added',
   'large', 'medium', 'small', 'unenriched', 'enriched', 'or', 'ingredient', 'grade',
 ]);
 
@@ -197,8 +197,11 @@ export function scoreMatch(query: string, food: Pick<FoodItem, 'name' | 'brand'>
 
   const hits = q.filter((w) => nameAll.includes(w) || brand.includes(w)).length;
   const coverage = hits / q.length;
-  // "without sauce" / "NS as to fat" say what the food is NOT, so those words don't make it more specific.
-  const name = nameTokens(food.name.replace(/\b(without|ns as to)\b[^,]*/gi, ' ')).filter((w) => !NEUTRAL.has(w));
+  // "without sauce" / "NS as to fat" / "skin not eaten" say what the food is NOT, so those words don't make it
+  // more specific. "skin eaten" does count, so the lean version wins by default.
+  const name = nameTokens(food.name.replace(/\b(without|ns as to)\b[^,]*|\bskin not eaten\b/gi, ' ')).filter(
+    (w) => !NEUTRAL.has(w)
+  );
   const precision = name.length ? name.filter((w) => q.includes(w) || prep.includes(w)).length / name.length : 1;
   const prepBonus = prep.length ? (0.1 * prep.filter((w) => nameAll.includes(w)).length) / prep.length : 0;
   // The brand counts as named only through a word that isn't also the food ("egg" doesn't name "Oakdell Egg").

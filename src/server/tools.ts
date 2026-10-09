@@ -200,7 +200,7 @@ const previewMeal: ToolDef<{
     const results = await Promise.all(
       items.map(async (item) => {
         const input = { food_name: item.food_name, quantity: item.quantity, unit: item.unit, preparation: item.preparation };
-        const candidates: { food: FoodItem; source: MatchSource; score: number }[] = [];
+        const candidates: { food: FoodItem; source: MatchSource; score: number; covered: boolean }[] = [];
 
         const savedRanked = rankFoods(item.food_name, savedFoods, item.preparation);
         candidates.push(...savedRanked.slice(0, 3).map((r) => ({ ...r, source: 'saved' as const })));
@@ -221,13 +221,29 @@ const previewMeal: ToolDef<{
           }
         }
 
+        // Among near-equal matches, take the first whose serving sizes can measure what the user said
+        // ("1 cup" rice: skip a record that has no cup serving). Uses the full record, so the portion
+        // matches what log_meal will save.
+        let food: FoodItem | undefined;
+        let portion: ReturnType<typeof resolvePortion> | undefined;
+        if (best) {
+          const top = best;
+          const close = candidates.filter((c) => c.source === top.source && c.covered && c.score >= top.score - 0.05);
+          for (const c of close.slice(0, 3)) {
+            const full = c.source === 'saved' ? c.food : ((await ctx.foods.fetchByRef(foodKey(c.food)).catch(() => null)) ?? c.food);
+            const p = resolvePortion(full, item.quantity, item.unit);
+            if (c === top || p.ok) [best, food, portion] = [c, full, p];
+            if (p.ok) break;
+          }
+        }
+
         const alternatives = candidates
           .filter((c) => c !== best && c.score >= 0.4)
           .sort((a, b) => b.score - a.score)
           .slice(0, 3)
           .map((c) => ({ food_ref: foodKey(c.food), name: c.food.name, brand: c.food.brand, source: c.source }));
 
-        if (!best) {
+        if (!best || !food || !portion) {
           return {
             input,
             status: 'not_found' as const,
@@ -239,10 +255,7 @@ const previewMeal: ToolDef<{
           };
         }
 
-        // Use the full record (all serving sizes) so the portion matches what log_meal will save.
         const ref = foodKey(best.food);
-        const food = best.source === 'saved' ? best.food : ((await ctx.foods.fetchByRef(ref).catch(() => null)) ?? best.food);
-        const portion = resolvePortion(food, item.quantity, item.unit);
         if (!portion.ok) {
           return {
             input,

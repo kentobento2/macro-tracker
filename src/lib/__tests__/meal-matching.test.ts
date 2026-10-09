@@ -148,6 +148,7 @@ describe('name matching', () => {
 
     const chicken = [
       food('Chicken, breast, meat and skin, raw'),
+      food('Chicken breast, grilled without sauce, skin eaten'),
       food('Chicken breast, grilled with sauce, skin eaten'),
       food('Chicken breast, grilled without sauce, skin not eaten'),
     ];
