@@ -4,10 +4,18 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { WeightCalendarSheet } from '@/components/calendar-sheet';
 import { SyncBanner } from '@/components/sync-banner';
-import { AppText, Banner, Button, Card, Field, Screen } from '@/components/ui';
+import { WeightChart } from '@/components/weight-chart';
+import { AppText, Banner, Button, Card, Field, Screen, Segmented } from '@/components/ui';
 import { MIN_TOUCH, Radius, Space, useColors } from '@/constants/theme';
 import { useProfileState, useToday, useWeighIns, useWeightStore } from '@/data/data-provider';
-import { groupByWeek, parseWeightInput, weekOverWeek, type WeighIn } from '@/lib/bodyweight';
+import {
+  groupByWeek,
+  parseWeightInput,
+  RANGES,
+  weekOverWeek,
+  type RangeKey,
+  type WeighIn,
+} from '@/lib/bodyweight';
 import { formatDayLabel, formatWeekRange, fromDateKey, type DateKey } from '@/lib/dates';
 import { formatWeight, formatWeightChange, formatWeightNumber, weightUnitLabel } from '@/lib/format';
 
@@ -19,6 +27,8 @@ export default function WeightScreen() {
   const { profile } = useProfileState();
   const unit = profile?.unitSystem ?? 'imperial';
   const scrollRef = useRef<ScrollView>(null);
+  const [range, setRange] = useState<RangeKey>('1M');
+  const [weeksShown, setWeeksShown] = useState(8);
 
   // ----- Entry form -----
   const [date, setDate] = useState<DateKey>(today);
@@ -107,6 +117,18 @@ export default function WeightScreen() {
         ) : null}
       </Card>
 
+      {weighIns.length > 0 ? (
+        <Card>
+          <Segmented
+            accessibilityLabel="Chart range"
+            value={range}
+            onChange={setRange}
+            options={RANGES.map((r) => ({ value: r, label: r }))}
+          />
+          <WeightChart weighIns={weighIns} range={range} today={today} unit={unit} />
+        </Card>
+      ) : null}
+
       <Card>
         <AppText variant="heading">{existing ? 'Update weigh-in' : 'Log weigh-in'}</AppText>
 
@@ -164,7 +186,7 @@ export default function WeightScreen() {
           <AppText variant="muted">No weigh-ins yet. Log your first one above — weekly averages appear here.</AppText>
         </Card>
       ) : null}
-      {weeks.map((week) => (
+      {weeks.slice(0, weeksShown).map((week) => (
         <Card key={week.weekStart} style={styles.week}>
           <View style={styles.weekHeader}>
             <AppText variant="label">{formatWeekRange(week.weekStart)}</AppText>
@@ -203,6 +225,14 @@ export default function WeightScreen() {
           ))}
         </Card>
       ))}
+
+      {weeks.length > weeksShown ? (
+        <Button
+          title={`Show older weeks (${weeks.length - weeksShown} more)`}
+          variant="secondary"
+          onPress={() => setWeeksShown((n) => n + 8)}
+        />
+      ) : null}
 
       {calendarOpen ? (
         <WeightCalendarSheet

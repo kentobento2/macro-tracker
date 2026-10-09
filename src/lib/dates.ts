@@ -57,3 +57,10 @@ export function formatWeekRange(key: DateKey): string {
     ? `${month(first)} ${first.getDate()} – ${last.getDate()}`
     : `${month(first)} ${first.getDate()} – ${month(last)} ${last.getDate()}`;
 }
+
+/** Whole calendar days from `a` to `b` (negative if b is before a). DST-safe. */
+export function daysBetween(a: DateKey, b: DateKey): number {
+  const [ay, am, ad] = a.split('-').map(Number);
+  const [by, bm, bd] = b.split('-').map(Number);
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86_400_000);
+}

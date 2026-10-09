@@ -1,5 +1,6 @@
 import {
   addDays,
+  daysBetween,
   daysEnding,
   formatDayLabel,
   formatWeekRange,
@@ -70,5 +71,15 @@ describe('calendar weeks (Mon–Sun)', () => {
   it('formats week ranges', () => {
     expect(formatWeekRange('2026-10-08')).toBe('Oct 5 – 11');
     expect(formatWeekRange('2026-10-01')).toBe('Sep 28 – Oct 4');
+  });
+});
+
+describe('daysBetween', () => {
+  it('counts calendar days, across DST and years', () => {
+    expect(daysBetween('2026-10-08', '2026-10-08')).toBe(0);
+    expect(daysBetween('2026-10-01', '2026-10-08')).toBe(7);
+    expect(daysBetween('2026-10-08', '2026-10-01')).toBe(-7);
+    expect(daysBetween('2026-03-07', '2026-03-09')).toBe(2); // US DST starts Mar 8
+    expect(daysBetween('2025-12-31', '2026-01-01')).toBe(1);
   });
 });
