@@ -7,4 +7,9 @@ module.exports = defineConfig([
   {
     ignores: ['dist/*', 'supabase/functions/*'],
   },
+  {
+    // The MCP SDK resolves through its package.json "exports" map, which TypeScript understands but
+    // eslint-plugin-import's resolver doesn't.
+    rules: { 'import/no-unresolved': ['error', { ignore: ['^@modelcontextprotocol/sdk/'] }] },
+  },
 ]);

@@ -1,0 +1,22 @@
+// Personal API tokens for assistants that can't do OAuth. Pure helpers shared by the app (which creates
+// tokens) and the MCP server (which checks them). Only a SHA-256 hash of a token is ever stored.
+
+export const API_TOKEN_PREFIX = 'mt_';
+
+/** "mt_" + 43 base64url characters (32 random bytes). */
+export function formatApiToken(randomBytes: Uint8Array): string {
+  if (randomBytes.length !== 32) throw new RangeError('API tokens need exactly 32 random bytes.');
+  let binary = '';
+  for (const b of randomBytes) binary += String.fromCharCode(b);
+  // btoa exists in browsers, React Native (Hermes) and Node 16+.
+  return API_TOKEN_PREFIX + btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+export function isApiToken(s: string): boolean {
+  return /^mt_[A-Za-z0-9_-]{43}$/.test(s);
+}
+
+/** What the app shows to identify a token after creation, e.g. "mt_Ab3x…". */
+export function apiTokenDisplayPrefix(token: string): string {
+  return token.slice(0, 7);
+}

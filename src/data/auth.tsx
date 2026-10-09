@@ -41,13 +41,14 @@ export function getSignInRedirectError() {
   return redirectError;
 }
 
-export async function signInWithGoogle() {
+/** Redirects to Google. Comes back to `returnTo` (default: the app's home page), which must be an allowed redirect URL in Supabase. */
+export async function signInWithGoogle(returnTo?: string) {
   if (Platform.OS !== 'web') {
     throw new Error('Google sign-in is only set up for the web app.');
   }
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: window.location.origin },
+    options: { redirectTo: returnTo ?? window.location.origin },
   });
   if (error) throw error;
 }

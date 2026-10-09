@@ -44,6 +44,8 @@ function RootNavigator() {
       <Stack.Protected guard={!session}>
         <Stack.Screen name="sign-in" />
       </Stack.Protected>
+      {/* Reachable signed in or out: it handles its own sign-in so it can return to the assistant. */}
+      <Stack.Screen name="oauth/consent" />
     </Stack>
   );
 

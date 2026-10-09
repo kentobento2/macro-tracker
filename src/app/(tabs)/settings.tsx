@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { ApiTokensCard } from '@/components/api-tokens-card';
 import { SyncBanner } from '@/components/sync-banner';
 import { AppText, Banner, Button, Card, Field, Screen, Segmented } from '@/components/ui';
 import { MIN_TOUCH, Radius, Space, useColors } from '@/constants/theme';
@@ -259,6 +260,8 @@ export default function SettingsScreen() {
       ) : null}
       {Object.keys(errors).length ? <Banner>Fix the highlighted fields.</Banner> : null}
       <Button title="Save" onPress={save} />
+
+      <ApiTokensCard />
 
       <Card>
         <AppText variant="heading">Account</AppText>

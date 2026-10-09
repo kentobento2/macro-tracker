@@ -8,6 +8,30 @@ export type Database = {
   };
   public: {
     Tables: {
+      api_tokens: {
+        Row: {
+          created_at: string;
+          id: string;
+          last_used_at: string | null;
+          name: string;
+          revoked_at: string | null;
+          token_hash: string;
+          token_prefix: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          last_used_at?: string | null;
+          name: string;
+          revoked_at?: string | null;
+          token_hash: string;
+          token_prefix: string;
+          user_id?: string;
+        };
+        Update: Partial<Database['public']['Tables']['api_tokens']['Insert']>;
+        Relationships: [];
+      };
       body_weights: {
         Row: {
           created_at: string;
@@ -131,6 +155,7 @@ export type Database = {
           target_carbs_g: number | null;
           target_fat_g: number | null;
           target_protein_g: number | null;
+          timezone: string;
           unit_system: string;
           updated_at: string;
           weight_kg: number | null;
@@ -147,6 +172,7 @@ export type Database = {
           target_carbs_g?: number | null;
           target_fat_g?: number | null;
           target_protein_g?: number | null;
+          timezone?: string;
           unit_system?: string;
           updated_at?: string;
           weight_kg?: number | null;
@@ -156,7 +182,9 @@ export type Database = {
       };
     };
     Views: { [_ in never]: never };
-    Functions: { [_ in never]: never };
+    Functions: {
+      mcp_rate_hit: { Args: { p_user_id: string; p_limit: number }; Returns: boolean };
+    };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };
   };
