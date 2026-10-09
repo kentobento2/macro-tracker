@@ -207,13 +207,15 @@ const previewMeal: ToolDef<{
         let best = savedRanked[0]?.covered ? candidates[0] : undefined;
 
         if (!best) {
-          const ext = await ctx.foods.searchExternal(item.food_name);
+          // Search with the preparation ("chicken breast grilled") so the database surfaces that version.
+          const searchText = item.preparation ? `${item.food_name} ${item.preparation}` : item.food_name;
+          const ext = await ctx.foods.searchExternal(searchText);
           ext.problems.forEach((p) => problems.add(p));
           const usdaRanked = rankFoods(item.food_name, ext.usda, item.preparation).map((r) => ({ ...r, source: 'usda' as const }));
           candidates.push(...usdaRanked.slice(0, 3));
           best = usdaRanked[0]?.covered ? usdaRanked[0] : undefined;
           if (!best) {
-            const off = await ctx.foods.searchOff(item.food_name);
+            const off = await ctx.foods.searchOff(searchText);
             if (off.problem) problems.add(off.problem);
             const offRanked = rankFoods(item.food_name, off.foods, item.preparation).map((r) => ({ ...r, source: 'off' as const }));
             candidates.push(...offRanked.slice(0, 3));

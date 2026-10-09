@@ -148,6 +148,11 @@ describe('preview_meal', () => {
     expect(r.items[0].message).toMatch(/"1 banana", "1 cup"/);
   });
 
+  it('searches with the preparation so the database surfaces that version', async () => {
+    await call('preview_meal', { items: [{ food_name: 'chicken breast', preparation: 'grilled', quantity: 6, unit: 'oz' }] });
+    expect(foods.calls).toContain('usda:chicken breast grilled');
+  });
+
   it('among equally good matches, picks one that has the unit the user said', async () => {
     const noServings = usda(2710788, 'Rice, white, cooked, as ingredient', 130, 2.5, 29, 0.4);
     const withCup = usda(2708403, 'Rice, white, cooked, NS as to fat', 130, 2.5, 29, 0.4, [['1 cup', 158]]);
