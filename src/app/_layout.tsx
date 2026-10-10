@@ -1,3 +1,4 @@
+import { Analytics, type BeforeSend } from '@vercel/analytics/react';
 import { Stack, ThemeProvider } from 'expo-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, Platform, View } from 'react-native';
@@ -19,9 +20,18 @@ export default function RootLayout() {
       <AuthProvider>
         <RootNavigator />
       </AuthProvider>
+      {/* Vercel Web Analytics (cookieless page views). Must render here, not in +html.tsx, which never runs
+          in the browser. The script and endpoint are same-origin (/_vercel/insights), so the CSP needs no change. */}
+      {Platform.OS === 'web' && process.env.NODE_ENV === 'production' ? <Analytics beforeSend={withoutQuery} /> : null}
     </ThemeProvider>
   );
 }
+
+/** Report page paths only: query strings can carry ids (?entryId=…, ?authorization_id=…). */
+const withoutQuery: BeforeSend = (event) => {
+  const url = new URL(event.url);
+  return { ...event, url: `${url.origin}${url.pathname}` };
+};
 
 function RootNavigator() {
   const { session, loading } = useAuth();
