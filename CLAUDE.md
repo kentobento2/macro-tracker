@@ -47,6 +47,7 @@ Expo (TypeScript, Expo Router) app shipped primarily as a mobile-first PWA on we
 - `supabase/functions/food-lookup/` — Edge Function proxying USDA FoodData Central (`search`: whole foods + branded, branded matches all words first) and Open Food Facts (`search_off`: name search via search.openfoodfacts.org, results lack servings so the app fetches the product on pick; `barcode`: product lookup). Open Food Facts is crowd-sourced and rate-limited (~10 searches/min); the app shows its section separately and degrades to "busy". Reads the `FDC_API_KEY` secret. Deno code, excluded from the app's tsconfig/eslint. The upstream fetch/trim code lives in `supabase/functions/_shared/food-sources.ts` (runtime-agnostic, `fetch` injected) and is shared with the MCP server; deploy `food-lookup` together with that file.
 - `api/` — Vercel Functions. `api/mcp.ts` = remote MCP server (Streamable HTTP) for Claude / Meta Muse; `api/oauth-protected-resource.ts` = RFC 9728 metadata (rewritten from `/.well-known/oauth-protected-resource*` in `vercel.json`). Setup, tools and manual test script: `docs/mcp.md`.
 - `src/server/` — MCP server logic (Node, no React). `auth.ts` resolves the user from the bearer token (Supabase OAuth JWT or a hashed `mt_` API token); `store.ts` is the per-user data layer. It uses the Supabase secret key, which bypasses RLS, so **every query must filter by the bound `user_id`**, and tools never take a user id. `tools.ts` = tool definitions; `mcp.ts` = HTTP handling, 401 challenge, rate limit. Tests (including cross-user isolation) are in `src/server/__tests__/`, against `testing/fake-supabase.ts`. Server-only env: `SUPABASE_SECRET_KEY`, `FDC_API_KEY` (Vercel env vars / `.env.local`, never `EXPO_PUBLIC_*`).
+- `src/app/guide.tsx` — public quick-start guide (no sign-in needed) with a feature gallery of real screenshots in `assets/guide/`; regenerate them after UI changes with `npm run build:web && npm run screenshots:guide` (seeds a demo account in headless Chrome, Supabase blocked). The Log screen's "Get started" checklist (`src/components/getting-started.tsx`, logic in `src/lib/onboarding.ts`) links to it.
 - `src/app/oauth/consent.tsx` — consent page for Supabase's OAuth 2.1 server (assistants signing in); `src/components/api-tokens-card.tsx` — Settings card to create/revoke API tokens (only the SHA-256 hash is stored).
 - `public/` — static web files: `manifest.json`, `sw.js`, icons.
 
@@ -63,4 +64,5 @@ npm run typecheck  # tsc --noEmit
 npm run lint       # expo lint
 npm run build:web  # static PWA export to dist/
 npm run mcp:dev    # local MCP server on :8787 (needs SUPABASE_SECRET_KEY in .env.local)
+npm run screenshots:guide  # refresh the guide's screenshots (after build:web)
 ```

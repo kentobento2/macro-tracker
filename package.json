@@ -57,7 +57,8 @@
     "test": "jest",
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
-    "mcp:dev": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/mcp-dev.mjs"
+    "mcp:dev": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/mcp-dev.mjs",
+    "screenshots:guide": "tsx scripts/guide-screenshots.mjs"
   },
   "private": true,
   "jest": {

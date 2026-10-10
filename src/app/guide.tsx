@@ -63,6 +63,114 @@ const Tip = ({ children }: { children: ReactNode }) => <AppText variant="small">
 /** UI words in bold, as they appear in the app. */
 const B = ({ children }: { children: ReactNode }) => <Text style={styles.bold}>{children}</Text>;
 
+// Real screens from the app with a demo account (regenerate with scripts/guide-screenshots.mjs).
+const FEATURES: { image: number; title: string; caption: string }[] = [
+  {
+    image: require('../../assets/guide/log.webp'),
+    title: 'Your day at a glance',
+    caption: 'Calories, protein, fat and carbs against your targets, meal by meal.',
+  },
+  {
+    image: require('../../assets/guide/add.webp'),
+    title: 'Every way to add food',
+    caption: 'Search USDA and Open Food Facts, scan a barcode, or pick your recipes, foods and favorites.',
+  },
+  {
+    image: require('../../assets/guide/portion.webp'),
+    title: 'See the impact first',
+    caption: 'Servings, grams or ounces, and how much of each target it uses before you log it.',
+  },
+  {
+    image: require('../../assets/guide/recipe-editor.webp'),
+    title: 'Recipes you cook',
+    caption: 'Enter the ingredients once. Totals for the batch and per serving are worked out for you.',
+  },
+  {
+    image: require('../../assets/guide/recipe-log.webp'),
+    title: 'Log exactly what you ate',
+    caption: 'Weigh the pot, log your ounces, and see each ingredient’s share of your plate.',
+  },
+  {
+    image: require('../../assets/guide/weight.webp'),
+    title: 'Trends, not noise',
+    caption: 'Your weekly average and 7-day trend line, so daily water swings don’t throw you off.',
+  },
+];
+
+const SHOT_WIDTH = 220;
+const SHOT_HEIGHT = Math.round((SHOT_WIDTH * 1688) / 780);
+
+function FeatureGallery() {
+  const c = useColors();
+  return (
+    <View style={styles.gallery}>
+      <ScrollView
+        horizontal
+        snapToInterval={SHOT_WIDTH + Space.md}
+        decelerationRate="fast"
+        contentContainerStyle={styles.galleryRow}
+        accessibilityLabel="What the app does">
+        {FEATURES.map((f) => (
+          <View key={f.title} style={styles.tile}>
+            <Image
+              source={f.image}
+              style={[styles.shot, { borderColor: c.border }]}
+              accessibilityLabel={`${f.title}: ${f.caption}`}
+              resizeMode="cover"
+            />
+            <AppText variant="label">{f.title}</AppText>
+            <AppText variant="small">{f.caption}</AppText>
+          </View>
+        ))}
+        <View style={styles.tile}>
+          <ChatExample />
+          <AppText variant="label">Or just say it</AppText>
+          <AppText variant="small">
+            Connect Claude and tell it what you ate. It finds the foods, shows you the numbers, and logs them when you
+            say so.
+          </AppText>
+        </View>
+      </ScrollView>
+      <AppText variant="small" style={styles.center}>
+        Swipe to see more →
+      </AppText>
+    </View>
+  );
+}
+
+function Bubble({ mine, children }: { mine?: boolean; children: ReactNode }) {
+  const c = useColors();
+  return (
+    <View
+      style={[
+        styles.bubble,
+        mine
+          ? { alignSelf: 'flex-end', backgroundColor: c.ink }
+          : { alignSelf: 'flex-start', backgroundColor: c.card, borderColor: c.border, borderWidth: StyleSheet.hairlineWidth },
+      ]}>
+      <AppText variant="small" style={{ color: mine ? c.onInk : c.text }}>
+        {children}
+      </AppText>
+    </View>
+  );
+}
+
+/** An example conversation with Claude, drawn in the app's style (numbers match the demo account's targets). */
+function ChatExample() {
+  const c = useColors();
+  return (
+    <View style={[styles.shot, styles.chat, { backgroundColor: c.background, borderColor: c.border }]}>
+      <Bubble mine>I had 2 eggs and a slice of sourdough toast for breakfast</Bubble>
+      <Bubble>
+        Found them: 2 large eggs (148 kcal) and 1 slice sourdough toast (117 kcal). That’s 265 kcal, 17 g protein.
+        Log it to breakfast?
+      </Bubble>
+      <Bubble mine>Yes</Bubble>
+      <Bubble>Logged. You have 1,635 kcal and 123 g protein left today.</Bubble>
+    </View>
+  );
+}
+
 export default function GuideScreen() {
   const c = useColors();
   const { session } = useAuth();
@@ -84,10 +192,16 @@ export default function GuideScreen() {
         <Image source={require('../../public/icon-192.png')} style={styles.logo} accessibilityIgnoresInvertColors />
         <AppText variant="title">Macro Tracker</AppText>
         <AppText variant="muted" style={styles.center}>
-          Log meals, hit your calorie and macro targets, and track your weight. A two-minute setup, then a few taps a
-          meal.
+          Know what you eat without the busywork. Log meals in a few taps, cook your own recipes, track your weight,
+          or just tell Claude what you had.
         </AppText>
       </View>
+
+      <FeatureGallery />
+
+      <AppText variant="heading" style={styles.center}>
+        Get started in two minutes
+      </AppText>
 
       <Section onLayoutY={(y) => onSectionLayout('install', y)} icon="phone-portrait-outline" title="1. Put it on your home screen">
         <AppText variant="label">iPhone (Safari)</AppText>
@@ -201,5 +315,11 @@ const styles = StyleSheet.create({
   step: { flexDirection: 'row', gap: Space.sm, alignItems: 'flex-start' },
   num: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
   bold: { fontWeight: '700' },
+  gallery: { gap: Space.sm, marginHorizontal: -Space.lg },
+  galleryRow: { gap: Space.md, paddingHorizontal: Space.lg },
+  tile: { width: SHOT_WIDTH, gap: Space.xs },
+  shot: { width: SHOT_WIDTH, height: SHOT_HEIGHT, borderRadius: Radius.lg, borderWidth: StyleSheet.hairlineWidth, marginBottom: Space.xs },
+  chat: { padding: Space.sm, gap: Space.sm, justifyContent: 'center' },
+  bubble: { maxWidth: '88%', borderRadius: Radius.md, paddingHorizontal: Space.sm, paddingVertical: Space.xs + 2 },
   code: { borderWidth: StyleSheet.hairlineWidth, borderRadius: Radius.sm, padding: Space.sm },
 });
