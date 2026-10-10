@@ -11,7 +11,7 @@ import { AppText, Button, Card, Screen } from '@/components/ui';
 import { WeekSummary } from '@/components/week-summary';
 import { MIN_TOUCH, Radius, Space, useColors } from '@/constants/theme';
 import { useOnboardingPrefs, useProfileState, useToday } from '@/data/data-provider';
-import { addDays, formatDayLabel, fromDateKey, isDateKey, type DateKey } from '@/lib/dates';
+import { addDays, formatDayLabel, fromDateKey, greetingForHour, isDateKey, type DateKey } from '@/lib/dates';
 
 /** The food log for any day. The day lives in the URL (?date=YYYY-MM-DD) so reloads and links keep it. */
 export default function LogScreen() {
@@ -43,6 +43,11 @@ export default function LogScreen() {
           accessibilityLabel={`${formatDayLabel(date, today)}. Open calendar`}
           onPress={() => setCalendarOpen(true)}
           style={({ pressed }) => [styles.title, { opacity: pressed ? 0.6 : 1 }]}>
+          {isToday ? (
+            <AppText variant="label" style={{ color: c.primary }}>
+              {greetingForHour(new Date().getHours())}
+            </AppText>
+          ) : null}
           <AppText variant="title">{formatDayLabel(date, today)}</AppText>
           <View style={styles.subtitle}>
             <Ionicons name="calendar-outline" size={16} color={c.primary} />

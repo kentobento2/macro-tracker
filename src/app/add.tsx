@@ -15,6 +15,7 @@ import {
   Card,
   Chip,
   Field,
+  FoodEmoji,
   ProgressRing,
   Screen,
   SectionTitle,
@@ -66,6 +67,7 @@ import {
   type Meal,
   type Portion,
 } from '@/lib/entries';
+import { foodEmoji } from '@/lib/food-emoji';
 import { formatKcal } from '@/lib/format';
 import { macroCaloriePercents, nutritionForGrams, percentOfTarget } from '@/lib/macros';
 import { filterFavorites, makeFavorite } from '@/lib/favorites';
@@ -578,6 +580,7 @@ function FoodRow({ food, onPress, favorite }: { food: FoodItem; onPress: () => v
       accessibilityRole="button"
       accessibilityLabel={`Choose ${food.name}`}
       style={({ pressed }) => [styles.foodRow, { borderTopColor: c.border, opacity: pressed ? 0.6 : 1 }]}>
+      <FoodEmoji emoji={foodEmoji(food.name, food.recipe)} />
       <View style={styles.flex}>
         <AppText numberOfLines={2}>{food.name}</AppText>
         <AppText variant="small" numberOfLines={1}>

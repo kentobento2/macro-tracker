@@ -1,5 +1,5 @@
-// Shared, mobile-first UI primitives. Visual language: light background, white rounded cards,
-// big bold numbers with small colored % pills, pill toggles, and a dark primary button.
+// Shared, mobile-first UI primitives. Visual language: warm oat background, soft cream cards with a gentle
+// shadow, rounded Nunito type, big bold numbers with small colored % pills, pill toggles and a dark pill button.
 
 import { useState, type ComponentProps, type ReactNode, type RefObject } from 'react';
 import {
@@ -20,7 +20,7 @@ import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
-import { MAX_CONTENT_WIDTH, MIN_TOUCH, Radius, Space, tint, useColors } from '@/constants/theme';
+import { Font, MAX_CONTENT_WIDTH, MIN_TOUCH, Radius, Space, tint, useColors } from '@/constants/theme';
 
 export function Screen({
   children,
@@ -50,7 +50,7 @@ export function Screen({
 
 export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const c = useColors();
-  return <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }, style]}>{children}</View>;
+  return <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border, boxShadow: c.shadow }, style]}>{children}</View>;
 }
 
 type Variant = 'title' | 'heading' | 'body' | 'label' | 'muted' | 'small';
@@ -82,7 +82,8 @@ export function Button({
 }: {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+  /** `ghostDanger`: a quiet text button for a destructive first step (the confirm uses `danger`). */
+  variant?: 'primary' | 'secondary' | 'ghost' | 'ghostDanger' | 'danger';
   disabled?: boolean;
   loading?: boolean;
   icon?: ReactNode;
@@ -90,8 +91,10 @@ export function Button({
   accessibilityLabel?: string;
 }) {
   const c = useColors();
-  const bg = { primary: c.ink, secondary: c.track, ghost: 'transparent', danger: c.dangerSoft }[variant];
-  const fg = { primary: c.onInk, secondary: c.text, ghost: c.primary, danger: c.danger }[variant];
+  const bg = { primary: c.ink, secondary: c.border, ghost: 'transparent', ghostDanger: 'transparent', danger: c.dangerSoft }[
+    variant
+  ];
+  const fg = { primary: c.onInk, secondary: c.text, ghost: c.primary, ghostDanger: c.danger, danger: c.danger }[variant];
   return (
     <Pressable
       accessibilityRole="button"
@@ -127,11 +130,11 @@ export function Field({
 }: TextInputProps & { label?: string; suffix?: string; error?: string | null }) {
   const c = useColors();
   const [focused, setFocused] = useState(false);
-  const border = error ? c.danger : focused ? c.ink : c.border;
+  const border = error ? c.danger : focused ? c.primary : c.border;
   return (
     <View style={[styles.field, style as StyleProp<ViewStyle>]}>
       {label ? <AppText variant="label">{label}</AppText> : null}
-      <View style={[styles.inputWrap, { borderColor: border, backgroundColor: c.card }]}>
+      <View style={[styles.inputWrap, { borderColor: border, backgroundColor: focused ? c.card : c.track }]}>
         <TextInput
           placeholderTextColor={c.muted}
           {...input}
@@ -256,7 +259,7 @@ export function ProgressRing({
   label,
   color,
   size = 64,
-  stroke = 5,
+  stroke = 7,
 }: {
   percent: number;
   label: string;
@@ -272,7 +275,7 @@ export function ProgressRing({
     <View style={styles.ring} accessible accessibilityLabel={`${label}: ${percent}% of daily target`}>
       <View style={{ width: size, height: size }}>
         <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
-          <Circle cx={size / 2} cy={size / 2} r={r} stroke={c.track} strokeWidth={stroke} fill="none" />
+          <Circle cx={size / 2} cy={size / 2} r={r} stroke={tint(color, 0.16)} strokeWidth={stroke} fill="none" />
           {shown > 0 ? (
             // Skipped at 0%: a round line cap would still draw a dot.
             <Circle
@@ -332,11 +335,25 @@ export function ActionButton({
       accessibilityState={active === undefined ? undefined : { selected: active }}
       onPress={onPress}
       style={({ pressed }) => [styles.action, { opacity: pressed ? 0.6 : 1 }]}>
-      <View style={[styles.actionIcon, { backgroundColor: active ? tint(c.fat, 0.2) : c.track }]}>
+      <View style={[styles.actionIcon, { backgroundColor: active ? tint(c.fat, 0.16) : c.track }]}>
         <Ionicons name={icon} size={20} color={active ? c.fat : fg} />
       </View>
       <Text style={[styles.actionLabel, { color: fg }]}>{label}</Text>
     </Pressable>
+  );
+}
+
+/** Small round badge with a food's emoji (see `foodEmoji` in lib/food-emoji). Decorative: hidden from screen readers. */
+export function FoodEmoji({ emoji }: { emoji: string }) {
+  const c = useColors();
+  return (
+    <View
+      style={[styles.emoji, { backgroundColor: c.track }]}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      aria-hidden>
+      <Text style={styles.emojiText}>{emoji}</Text>
+    </View>
   );
 }
 
@@ -381,19 +398,18 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: Radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    padding: Space.lg,
+    padding: Space.lg + 2,
     gap: Space.md,
-    boxShadow: '0 1px 3px rgba(16, 24, 40, 0.06)',
   },
   button: {
     minHeight: MIN_TOUCH + 6,
-    borderRadius: Radius.md + 2,
-    paddingHorizontal: Space.lg,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Space.xl,
     alignItems: 'center',
     justifyContent: 'center',
   },
   buttonInner: { flexDirection: 'row', alignItems: 'center', gap: Space.sm },
-  buttonText: { fontSize: 16, fontWeight: '700' },
+  buttonText: { fontSize: 16, fontFamily: Font.bold },
   field: { gap: Space.xs, flex: 1 },
   inputWrap: {
     flexDirection: 'row',
@@ -405,7 +421,7 @@ const styles = StyleSheet.create({
     gap: Space.sm,
   },
   // 16px avoids iOS Safari zooming into focused inputs.
-  input: { flex: 1, fontSize: 16, paddingVertical: Space.sm, minWidth: 0 },
+  input: { flex: 1, fontSize: 16, fontFamily: Font.regular, paddingVertical: Space.sm, minWidth: 0 },
   segmented: { flexDirection: 'row', borderRadius: Radius.pill, padding: 4 },
   segment: {
     flex: 1,
@@ -415,7 +431,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: Space.xs,
   },
-  segmentText: { fontSize: 15, fontWeight: '600' },
+  segmentText: { fontSize: 15, fontFamily: Font.bold },
   chip: {
     minHeight: MIN_TOUCH - 4,
     borderRadius: Radius.pill,
@@ -423,36 +439,38 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     maxWidth: '100%',
   },
-  chipText: { fontSize: 15, fontWeight: '600' },
-  pill: { borderRadius: Radius.pill, paddingHorizontal: 8, paddingVertical: 2 },
-  pillText: { fontSize: 12, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  chipText: { fontSize: 15, fontFamily: Font.semibold },
+  pill: { borderRadius: Radius.pill, paddingHorizontal: 9, paddingVertical: 2 },
+  pillText: { fontSize: 12, fontFamily: Font.heavy, fontVariant: ['tabular-nums'] },
   pillSlot: { height: 22, justifyContent: 'center' },
   stat: { flex: 1, minWidth: 0 },
-  statLg: { fontSize: 40, fontWeight: '800', fontVariant: ['tabular-nums'], letterSpacing: -0.5 },
+  statLg: { fontSize: 40, fontFamily: Font.heavy, fontVariant: ['tabular-nums'], letterSpacing: -0.5 },
   // Step down for long values like "1,320" so they fit beside three macro columns on narrow phones.
-  statLgLong: { fontSize: 32, fontWeight: '800', fontVariant: ['tabular-nums'], letterSpacing: -0.5 },
-  statMd: { fontSize: 22, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  statLabel: { fontSize: 13, marginTop: 2 },
+  statLgLong: { fontSize: 32, fontFamily: Font.heavy, fontVariant: ['tabular-nums'], letterSpacing: -0.5 },
+  statMd: { fontSize: 22, fontFamily: Font.heavy, fontVariant: ['tabular-nums'] },
+  statLabel: { fontSize: 13, fontFamily: Font.semibold, marginTop: 2 },
   ring: { alignItems: 'center', flex: 1, gap: Space.xs },
   ringCenter: { alignItems: 'center', justifyContent: 'center' },
-  ringText: { fontSize: 15, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  targetTrack: { height: 10, borderRadius: Radius.pill, overflow: 'visible', justifyContent: 'center' },
+  ringText: { fontSize: 15, fontFamily: Font.heavy, fontVariant: ['tabular-nums'] },
+  targetTrack: { height: 12, borderRadius: Radius.pill, overflow: 'visible', justifyContent: 'center' },
   targetFill: { position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: Radius.pill },
-  targetMarker: { position: 'absolute', width: 2, height: 16, marginLeft: -1, borderRadius: 1 },
+  targetMarker: { position: 'absolute', width: 3, height: 18, marginLeft: -1.5, borderRadius: 2 },
   action: { alignItems: 'center', gap: Space.xs, minWidth: 64, paddingVertical: 2 },
-  actionIcon: { width: MIN_TOUCH, height: MIN_TOUCH, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
-  actionLabel: { fontSize: 13, fontWeight: '500' },
-  track: { height: 8, borderRadius: Radius.pill, overflow: 'hidden' },
+  actionIcon: { width: MIN_TOUCH + 4, height: MIN_TOUCH + 4, borderRadius: Radius.pill, alignItems: 'center', justifyContent: 'center' },
+  actionLabel: { fontSize: 13, fontFamily: Font.semibold },
+  emoji: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  emojiText: { fontSize: 19, lineHeight: 24 },
+  track: { height: 10, borderRadius: Radius.pill, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: Radius.pill },
   banner: { borderRadius: Radius.md, paddingHorizontal: Space.md, paddingVertical: Space.sm + 2 },
-  bannerText: { fontSize: 14, fontWeight: '500' },
+  bannerText: { fontSize: 14, fontFamily: Font.semibold },
 });
 
 const textStyles = StyleSheet.create({
-  title: { fontSize: 30, fontWeight: '800', letterSpacing: -0.4 },
-  heading: { fontSize: 19, fontWeight: '700' },
-  body: { fontSize: 16 },
-  label: { fontSize: 14, fontWeight: '600' },
-  muted: { fontSize: 15 },
-  small: { fontSize: 13 },
+  title: { fontSize: 30, fontFamily: Font.heavy, letterSpacing: -0.3 },
+  heading: { fontSize: 19, fontFamily: Font.heavy },
+  body: { fontSize: 16, fontFamily: Font.regular },
+  label: { fontSize: 14, fontFamily: Font.bold },
+  muted: { fontSize: 15, fontFamily: Font.regular },
+  small: { fontSize: 13, fontFamily: Font.regular },
 });

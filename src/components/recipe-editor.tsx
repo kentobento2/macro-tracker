@@ -221,7 +221,7 @@ export function RecipeEditor({
             </View>
           </Card>
         ) : (
-          <Button title="Delete recipe" variant="ghost" onPress={() => setConfirmDelete(true)} />
+          <Button title="Delete recipe" variant="ghostDanger" onPress={() => setConfirmDelete(true)} />
         )
       ) : null}
     </>

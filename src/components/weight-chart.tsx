@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, View, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
 import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 
-import { Space, useColors } from '@/constants/theme';
+import { Font, Space, useColors } from '@/constants/theme';
 import type { RangeKey, WeighIn } from '@/lib/bodyweight';
 import { formatDayLabel, type DateKey } from '@/lib/dates';
 import { weightUnitLabel } from '@/lib/format';
@@ -12,8 +12,8 @@ import { AppText } from './ui';
 
 const HEIGHT = 220;
 const PAD = { left: 40, right: 12, top: 12, bottom: 26 };
-// SVG text defaults to a serif font on the web; use the system UI font there.
-const FONT = Platform.OS === 'web' ? 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' : undefined;
+// The app font, with a sans fallback on the web (SVG text would otherwise default to serif there).
+const FONT = Platform.OS === 'web' ? `${Font.semibold}, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif` : Font.semibold;
 
 /** Daily weigh-ins as dots with the 7-day rolling average as a line. Tap to inspect a day. */
 export function WeightChart({
@@ -121,14 +121,14 @@ export function WeightChart({
               />
 
               {chart.dots.map((d) => (
-                <Circle key={d.date} cx={d.x} cy={d.y} r={3.5} fill={c.muted} fillOpacity={0.7} />
+                <Circle key={d.date} cx={d.x} cy={d.y} r={3.5} fill={c.muted} fillOpacity={0.55} />
               ))}
 
               {chart.averagePath ? (
                 <Path
                   d={chart.averagePath}
                   stroke={c.primary}
-                  strokeWidth={2.5}
+                  strokeWidth={3}
                   fill="none"
                   strokeLinejoin="round"
                   strokeLinecap="round"

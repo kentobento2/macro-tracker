@@ -8,7 +8,7 @@ import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppText, Button, Card, Screen } from '@/components/ui';
 import { APP_URL, MCP_URL } from '@/constants/app';
-import { Radius, Space, useColors } from '@/constants/theme';
+import { Font, Radius, Space, useColors } from '@/constants/theme';
 import { useAuth } from '@/data/auth';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   step: { flexDirection: 'row', gap: Space.sm, alignItems: 'flex-start' },
   num: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
-  bold: { fontWeight: '700' },
+  bold: { fontFamily: Font.bold },
   gallery: { gap: Space.sm, marginHorizontal: -Space.lg },
   galleryRow: { gap: Space.md, paddingHorizontal: Space.lg },
   tile: { width: SHOT_WIDTH, gap: Space.xs },

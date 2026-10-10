@@ -210,7 +210,7 @@ export function CustomFoodForm({
             </View>
           </Card>
         ) : (
-          <Button title="Delete custom food" variant="ghost" onPress={() => setConfirmDelete(true)} />
+          <Button title="Delete custom food" variant="ghostDanger" onPress={() => setConfirmDelete(true)} />
         )
       ) : null}
     </>

@@ -64,3 +64,11 @@ export function daysBetween(a: DateKey, b: DateKey): number {
   const [by, bm, bd] = b.split('-').map(Number);
   return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86_400_000);
 }
+
+/** A friendly greeting for the local hour (0–23), shown above today's log. */
+export function greetingForHour(hour: number): string {
+  if (hour >= 5 && hour < 12) return 'Good morning';
+  if (hour >= 12 && hour < 17) return 'Good afternoon';
+  if (hour >= 17 && hour < 22) return 'Good evening';
+  return 'Hello, night owl';
+}

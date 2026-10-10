@@ -1,6 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 
-import { Space, useColors, type Colors } from '@/constants/theme';
+import { Font, Space, useColors, type Colors } from '@/constants/theme';
 import { formatKcal } from '@/lib/format';
 import { macroCaloriePercents, percentOfTarget, targetBar, type Nutrition } from '@/lib/macros';
 import type { Targets } from '@/lib/targets';
@@ -78,7 +78,8 @@ export function NutritionSummary({
                   <AppText variant="small" style={styles.num}>
                     {fmt(value)} / {fmt(target)}
                     {'  ·  '}
-                    <AppText variant="small" style={bar.over ? { color: c.danger } : undefined}>
+                    {/* Going over is gently flagged in amber, not alarm red. */}
+                    <AppText variant="small" style={bar.over ? { color: c.warning, fontFamily: Font.bold } : undefined}>
                       {left >= 0 ? `${fmt(left)} left` : `${fmt(-left)} over`}
                     </AppText>
                   </AppText>

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { MAX_CONTENT_WIDTH, MIN_TOUCH, Radius, Space, useColors } from '@/constants/theme';
+import { Font, MAX_CONTENT_WIDTH, MIN_TOUCH, Radius, Space, useColors } from '@/constants/theme';
 import { useDatesWithEntries, useWeighIns } from '@/data/data-provider';
 import { addMonths, daysInMonth, formatMonth, monthGrid, monthOf, WEEKDAY_LABELS, type MonthKey } from '@/lib/calendar';
 import { fromDateKey, type DateKey } from '@/lib/dates';
@@ -161,7 +161,7 @@ function CalendarSheet({
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  backdrop: { flex: 1, backgroundColor: 'rgba(30, 22, 15, 0.4)' },
   sheet: {
     width: '100%',
     maxWidth: MAX_CONTENT_WIDTH,
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
   navBtn: { width: MIN_TOUCH, height: MIN_TOUCH, alignItems: 'center', justifyContent: 'center' },
   disabled: { opacity: 0.3 },
   row: { flexDirection: 'row' },
-  weekday: { flex: 1, textAlign: 'center', fontSize: 13, fontWeight: '600', paddingVertical: Space.xs },
+  weekday: { flex: 1, textAlign: 'center', fontSize: 13, fontFamily: Font.bold, paddingVertical: Space.xs },
   cell: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: MIN_TOUCH + 4 },
   day: {
     width: MIN_TOUCH,
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingTop: 4,
   },
-  dayText: { fontSize: 16, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  dayText: { fontSize: 16, fontFamily: Font.semibold, fontVariant: ['tabular-nums'] },
   future: { opacity: 0.35 },
   dot: { width: 5, height: 5, borderRadius: 2.5, marginTop: 2 },
   legend: { flexDirection: 'row', alignItems: 'center', gap: Space.sm, alignSelf: 'center', marginTop: Space.xs },

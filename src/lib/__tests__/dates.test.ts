@@ -3,6 +3,7 @@ import {
   daysBetween,
   daysEnding,
   formatDayLabel,
+  greetingForHour,
   formatWeekRange,
   fromDateKey,
   isDateKey,
@@ -81,5 +82,22 @@ describe('daysBetween', () => {
     expect(daysBetween('2026-10-08', '2026-10-01')).toBe(-7);
     expect(daysBetween('2026-03-07', '2026-03-09')).toBe(2); // US DST starts Mar 8
     expect(daysBetween('2025-12-31', '2026-01-01')).toBe(1);
+  });
+});
+
+describe('greetingForHour', () => {
+  it('follows the time of day, with boundaries on the hour', () => {
+    expect(greetingForHour(5)).toBe('Good morning');
+    expect(greetingForHour(11)).toBe('Good morning');
+    expect(greetingForHour(12)).toBe('Good afternoon');
+    expect(greetingForHour(16)).toBe('Good afternoon');
+    expect(greetingForHour(17)).toBe('Good evening');
+    expect(greetingForHour(21)).toBe('Good evening');
+  });
+
+  it('greets late nights and early mornings the same way', () => {
+    expect(greetingForHour(22)).toBe('Hello, night owl');
+    expect(greetingForHour(0)).toBe('Hello, night owl');
+    expect(greetingForHour(4)).toBe('Hello, night owl');
   });
 });

@@ -1,9 +1,14 @@
+import { Nunito_400Regular } from '@expo-google-fonts/nunito/400Regular';
+import { Nunito_600SemiBold } from '@expo-google-fonts/nunito/600SemiBold';
+import { Nunito_700Bold } from '@expo-google-fonts/nunito/700Bold';
+import { Nunito_800ExtraBold } from '@expo-google-fonts/nunito/800ExtraBold';
 import { Analytics, type BeforeSend } from '@vercel/analytics/react';
+import { useFonts } from 'expo-font';
 import { Stack, ThemeProvider } from 'expo-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, Platform, View } from 'react-native';
 
-import { useColors, useNavigationTheme } from '@/constants/theme';
+import { Font, useColors, useNavigationTheme } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/data/auth';
 import { DataProvider } from '@/data/data-provider';
 
@@ -33,11 +38,21 @@ const withoutQuery: BeforeSend = (event) => {
   return { ...event, url: `${url.origin}${url.pathname}` };
 };
 
+// Per-weight imports so only these four files are bundled (see `Font` in theme.ts).
+const FONT_ASSETS = {
+  [Font.regular]: Nunito_400Regular,
+  [Font.semibold]: Nunito_600SemiBold,
+  [Font.bold]: Nunito_700Bold,
+  [Font.heavy]: Nunito_800ExtraBold,
+};
+
 function RootNavigator() {
   const { session, loading } = useAuth();
   const c = useColors();
+  // If a font fails to load, carry on with the system font rather than blocking the app.
+  const [fontsLoaded, fontError] = useFonts(FONT_ASSETS);
 
-  if (loading) {
+  if (loading || (!fontsLoaded && !fontError)) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.background }}>
         <ActivityIndicator color={c.primary} />
@@ -49,7 +64,16 @@ function RootNavigator() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Protected guard={!!session}>
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="add" options={{ presentation: 'modal', headerShown: true, title: 'Add food' }} />
+        <Stack.Screen
+          name="add"
+          options={{
+            presentation: 'modal',
+            headerShown: true,
+            title: 'Add food',
+            headerShadowVisible: false,
+            headerTitleStyle: { fontFamily: Font.heavy, fontSize: 19 },
+          }}
+        />
       </Stack.Protected>
       <Stack.Protected guard={!session}>
         <Stack.Screen name="sign-in" />
