@@ -1,5 +1,7 @@
 import {
   cleanText,
+  countServingsFirst,
+  isUsefulServingLabel,
   dedupeFoods,
   isPlausiblePer100g,
   MAX_NAME_LENGTH,
@@ -8,6 +10,52 @@ import {
   normalizeUsdaFood,
   tidyName,
 } from '../foods';
+
+describe('USDA portion sizes', () => {
+  // Portion lists as USDA's full food records return them (FNDDS 2709223 avocado, 2705385 whole milk).
+  const usda = (description: string, measures: [string, number][]) =>
+    normalizeUsdaFood({
+      fdcId: 1,
+      description,
+      foodNutrients: [{ nutrientId: 1008, unitName: 'KCAL', value: 160 }],
+      foodMeasures: measures.map(([disseminationText, gramWeight]) => ({ disseminationText, gramWeight })),
+    })!;
+
+  it('drops survey codes, "Quantity not specified" and guideline amounts', () => {
+    const milk = usda('Milk, whole', [
+      ['Guideline amount per fl oz of beverage', 2.5],
+      ['90000', 244],
+      ['1 individual school container', 244],
+      ['1 cup', 244],
+      ['Guideline amount per cup of hot cereal', 61],
+      ['Quantity not specified', 244],
+      ['1 fl oz', 30.5],
+    ]);
+    expect(milk.servings.map((s) => s.label)).toEqual(['1 individual school container', '1 cup', '1 fl oz']);
+    expect(isUsefulServingLabel('1 90000')).toBe(false);
+    expect(isUsefulServingLabel('1 large')).toBe(true);
+  });
+
+  it('offers "one of it" first, so it is the default unit', () => {
+    const avocado = usda('Avocado, raw', [
+      ['90000', 30],
+      ['1 cup, mashed or pureed', 230],
+      ['1 slice', 15],
+      ['1 fruit', 150],
+    ]);
+    expect(avocado.servings.map((s) => s.label)).toEqual(['1 fruit', '1 cup, mashed or pureed', '1 slice']);
+    const eggs = countServingsFirst(
+      [
+        { label: '1 cup', grams: 243 },
+        { label: '1 egg whole without shell', grams: 50.3 },
+      ],
+      'Eggs, Grade A, Large, egg whole'
+    );
+    expect(eggs[0].label).toBe('1 egg whole without shell');
+    // Nothing that means "one of it": order unchanged.
+    expect(countServingsFirst([{ label: '1 cup', grams: 1 }, { label: '1 tbsp', grams: 1 }], 'Oil').map((s) => s.label)).toEqual(['1 cup', '1 tbsp']);
+  });
+});
 
 describe('normalizeUsdaFood', () => {
   // Trimmed from a real FoodData Central search result (Survey FNDDS 2709224).

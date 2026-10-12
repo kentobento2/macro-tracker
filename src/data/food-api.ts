@@ -63,15 +63,28 @@ export async function searchOpenFoodFacts(query: string): Promise<FoodItem[]> {
   );
 }
 
+/** One USDA food's full record, which has its portion sizes ("1 large egg", "1 cup"). Null if unknown. */
+export async function usdaFoodDetails(fdcId: number): Promise<FoodItem | null> {
+  const { food } = await invoke<{ food: UsdaFood | null }>({ type: 'usda_food', id: fdcId });
+  return food ? normalizeUsdaFood(food) : null;
+}
+
 /**
- * For an Open Food Facts search result, fetch the full product (which has serving sizes and the latest
- * nutrition). Falls back to the search data if the lookup fails, so the food can still be logged by weight.
+ * Search results often lack serving sizes: Open Food Facts hits never have them, and USDA whole foods
+ * (Foundation foods like "Eggs, Grade A, Large") only list portions in the full record. Fetch the full record
+ * so units like "1 large" can be offered. Falls back to the search data if the lookup fails, so the food can
+ * still be logged by weight.
  */
 export async function withServings(food: FoodItem): Promise<FoodItem> {
-  if (food.source !== 'off' || !food.sourceId || food.servings.length > 0) return food;
+  if (!food.sourceId || food.servings.length > 0) return food;
   try {
-    return (await lookupBarcode(food.sourceId)) ?? food;
+    if (food.source === 'off') return (await lookupBarcode(food.sourceId)) ?? food;
+    if (food.source === 'usda' && /^\d{1,10}$/.test(food.sourceId)) {
+      const full = await usdaFoodDetails(Number(food.sourceId));
+      return full && full.servings.length > 0 ? full : food;
+    }
   } catch {
-    return food;
+    // Keep the search result.
   }
+  return food;
 }

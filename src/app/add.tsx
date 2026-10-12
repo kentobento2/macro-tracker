@@ -341,8 +341,8 @@ function SearchStep({
     };
   }, [trimmed, searchActive]);
 
-  /** Open Food Facts search hits lack serving sizes; fetch the full product before opening it. */
-  const pickOff = async (food: FoodItem) => {
+  /** Search hits may lack serving sizes (Open Food Facts, USDA whole foods); fetch the full record first. */
+  const pickWithServings = async (food: FoodItem) => {
     setLookupState({ loading: true, error: null });
     const full = await withServings(food);
     setLookupState({ loading: false, error: null });
@@ -509,7 +509,7 @@ function SearchStep({
         <Card style={styles.list}>
           <AppText variant="label">Whole foods · USDA</AppText>
           {results.whole.map((f) => (
-            <FoodRow key={foodKey(f)} food={f} onPress={() => onPick(f)} />
+            <FoodRow key={foodKey(f)} food={f} onPress={() => pickWithServings(f)} />
           ))}
         </Card>
       ) : null}
@@ -517,7 +517,7 @@ function SearchStep({
         <Card style={styles.list}>
           <AppText variant="label">Brands & packaged · USDA</AppText>
           {results.branded.map((f) => (
-            <FoodRow key={foodKey(f)} food={f} onPress={() => onPick(f)} />
+            <FoodRow key={foodKey(f)} food={f} onPress={() => pickWithServings(f)} />
           ))}
         </Card>
       ) : null}
@@ -527,7 +527,7 @@ function SearchStep({
           {offLoading ? <ActivityIndicator style={{ marginVertical: Space.sm }} /> : null}
           {offCurrent?.error ? <AppText variant="small">{offCurrent.error}</AppText> : null}
           {offFoods.map((f) => (
-            <FoodRow key={foodKey(f)} food={f} onPress={() => pickOff(f)} />
+            <FoodRow key={foodKey(f)} food={f} onPress={() => pickWithServings(f)} />
           ))}
         </Card>
       ) : null}

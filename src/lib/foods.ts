@@ -85,6 +85,34 @@ export function tidyName(name: string): string {
   return t.toLowerCase().replace(/(^|[\s(\-/&,])([a-z])/g, (_m, sep: string, ch: string) => sep + ch.toUpperCase());
 }
 
+/**
+ * USDA portion lists include entries that aren't portions a person would pick: "Quantity not specified",
+ * bare survey codes ("90000"), and dietary-guideline amounts ("Guideline amount per fl oz of beverage").
+ */
+export function isUsefulServingLabel(label: string): boolean {
+  const t = label.trim().toLowerCase();
+  return /[a-z]/.test(t) && t !== 'quantity not specified' && !t.startsWith('guideline amount');
+}
+
+// Words that mean "one of the food itself" in a portion label ("1 large", "1 fruit", "1 nut").
+const COUNT_WORDS = new Set(['large', 'medium', 'small', 'whole', 'fruit', 'item', 'each', 'piece', 'nut']);
+const singularWord = (w: string) => (w.length > 3 && w.endsWith('ies') ? `${w.slice(0, -3)}y` : w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w);
+
+/**
+ * Puts the portion that means "one of it" first ("1 egg", "1 banana", "1 fruit"), since the first serving is
+ * what the app offers by default. Other portions keep USDA's order.
+ */
+export function countServingsFirst(servings: readonly Serving[], foodName: string): Serving[] {
+  const nameWords = new Set(foodName.toLowerCase().split(/[^a-z]+/).filter(Boolean).map(singularWord));
+  const isCount = (s: Serving) => {
+    const m = s.label.toLowerCase().match(/^1\s+([a-z]+)/);
+    if (!m) return false;
+    const w = singularWord(m[1]);
+    return nameWords.has(w) || COUNT_WORDS.has(w);
+  };
+  return [...servings.filter(isCount), ...servings.filter((s) => !isCount(s))];
+}
+
 // Branded serving sizes come in grams or milliliters (ml treated as g, like Open Food Facts).
 const GRAM_UNITS = new Set(['G', 'GRM', 'GM', 'ML', 'MLT']);
 
@@ -132,13 +160,15 @@ export function normalizeUsdaFood(f: UsdaFood): FoodItem | null {
     seen.add(label);
     servings.push({ label, grams: servingGrams });
   }
+  const measures: Serving[] = [];
   for (const m of f.foodMeasures ?? []) {
     const grams = num(m.gramWeight);
     const label = cleanText(m.disseminationText ?? '', MAX_SERVING_LABEL_LENGTH);
-    if (!grams || !label || label.toLowerCase() === 'quantity not specified' || seen.has(label)) continue;
+    if (!grams || !isUsefulServingLabel(label) || seen.has(label)) continue;
     seen.add(label);
-    servings.push({ label, grams });
+    measures.push({ label, grams });
   }
+  servings.push(...countServingsFirst(measures, f.description));
 
   const { calories, caloriesDerived } = resolveCalories(kcal, { protein, fat, carbs });
   if (!isPlausiblePer100g({ calories, protein, carbs, fat })) return null;

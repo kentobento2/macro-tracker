@@ -85,10 +85,11 @@ describe('usdaFoodById (food detail shape)', () => {
     expect(calls[0].url).toContain('/fdc/v1/food/173944?api_key=KEY');
     const food = normalizeUsdaFood(trimmed!)!;
     expect(food.per100g).toEqual({ calories: 89, protein: 1.09, carbs: 22.84, fat: 0.33 });
+    // "One of it" portions first (they become the default unit), then USDA's order.
     expect(food.servings).toEqual([
-      { label: '1 cup, mashed', grams: 225 },
       { label: '1 medium (7" to 7-7/8" long)', grams: 118 },
       { label: '1 banana', grams: 118 },
+      { label: '1 cup, mashed', grams: 225 },
     ]);
   });
 

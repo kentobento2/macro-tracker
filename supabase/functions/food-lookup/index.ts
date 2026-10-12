@@ -4,11 +4,12 @@
 // POST { type: "search", query: string }     -> USDA: { foods: whole foods, branded: branded products }
 // POST { type: "search_off", query: string } -> Open Food Facts name search: { products }
 // POST { type: "barcode", code: string }     -> Open Food Facts product: { product }
+// POST { type: "usda_food", id: number }     -> one USDA food with all its portion sizes: { food }
 //
 // Secrets: FDC_API_KEY (falls back to USDA's heavily rate-limited DEMO_KEY).
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
-import { offProduct, searchOff, searchUsda, UpstreamError, type FoodSourceConfig } from '../_shared/food-sources.ts';
+import { offProduct, searchOff, searchUsda, UpstreamError, usdaFoodById, type FoodSourceConfig } from '../_shared/food-sources.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -43,7 +44,7 @@ Deno.serve(async (req) => {
   const user = await requireUser(req);
   if (!user) return json({ error: 'unauthorized' }, 401);
 
-  let body: { type?: string; query?: unknown; code?: unknown };
+  let body: { type?: string; query?: unknown; code?: unknown; id?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -62,6 +63,12 @@ Deno.serve(async (req) => {
       const code = typeof body.code === 'string' ? body.code.trim() : '';
       if (!/^\d{8,14}$/.test(code)) return json({ error: 'invalid_barcode' }, 400);
       return json({ product: await offProduct(sources, code) });
+    }
+    if (body.type === 'usda_food') {
+      // Search results often omit portion sizes (e.g. Foundation foods); the food record has them.
+      const id = typeof body.id === 'number' ? body.id : NaN;
+      if (!Number.isInteger(id) || id <= 0 || id > 9_999_999_999) return json({ error: 'invalid_id' }, 400);
+      return json({ food: await usdaFoodById(sources, id) });
     }
     return json({ error: 'invalid_type' }, 400);
   } catch (e) {
